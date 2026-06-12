@@ -68,8 +68,10 @@ _SUCCESS_MSG = {
     "log_complaint": "Complaint logged. Apologise warmly in Telugu, then tell the customer a "
     "WhatsApp message is coming and ask them to send a photo of the problem there, and that the "
     "team will contact them.",
-    "create_order": "Order placed. Confirm in Telugu: read the items back, say the total in "
-    "Telugu words + రూపాయలు, and mention the WhatsApp follow-up.",
+    "create_order": "Order placed. In Telugu: read the items back; if dine-in/pickup say it'll "
+    "be ready in about ముప్పై నిమిషాల్లో, if delivery say updates come on WhatsApp; then say a "
+    "payment link is coming on WhatsApp and they can pay via it or cash on delivery. Do NOT "
+    "state a rupee total.",
     "update_order": "Order updated. Confirm the change warmly in Telugu with the new total in "
     "Telugu words + రూపాయలు.",
 }
@@ -77,9 +79,23 @@ _SUCCESS_MSG = {
 _FALLBACK_CONFIRM = {
     "create_booking": "Table book అయ్యింది అండి 🙏 Confirmation details WhatsApp లో పంపిస్తాను, ధన్యవాదాలు!",
     "log_complaint": "చాలా క్షమించండి అండి… మీకు WhatsApp లో message వస్తుంది, ఆ photo అక్కడ పంపండి, మా team త్వరగా మిమ్మల్ని contact చేస్తుంది.",
-    "create_order": "మీ order తీసుకున్నాను అండి 🙏 Details అన్నీ WhatsApp లో పంపిస్తాను, ధన్యవాదాలు!",
+    "create_order": "మీ order తీసుకున్నాను అండి 🙏 Payment link WhatsApp లో పంపిస్తాను, దాని ద్వారా pay చేయొచ్చు లేదా order వచ్చినప్పుడు cash on delivery కూడా చేయొచ్చు. ధన్యవాదాలు!",
     "update_order": "మీ order update చేశాను అండి 🙏 కొత్త details WhatsApp లో పంపిస్తాను.",
 }
+
+
+def _fallback_for(tool: str | None, args: dict | None) -> str:
+    """Spoken line used when the model adds no text after a tool call (common on flash-lite).
+    For orders it tailors the line to the order type so dine-in/pickup still hear ~30 min."""
+    if tool == "create_order":
+        ot = ((args or {}).get("order_type") or "").lower()
+        if ot in ("dinein", "pickup"):
+            ready = "మీ order తీసుకున్నాను అండి, సుమారు ముప్పై నిమిషాల్లో ready అవుతుంది. "
+        else:
+            ready = "మీ order తీసుకున్నాను అండి, delivery updates WhatsApp లో పంపిస్తాను. "
+        return (ready + "Payment link కూడా WhatsApp లో వస్తుంది — దాని ద్వారా pay చేయొచ్చు లేదా "
+                "order వచ్చినప్పుడు cash on delivery చేయొచ్చు. ధన్యవాదాలు! 🙏")
+    return _FALLBACK_CONFIRM.get(tool, "సరే అండి, అయ్యింది.")
 
 
 def llm_available() -> bool:
@@ -146,7 +162,7 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict) -> str:
     handlers: {tool_name: async fn(args)->saved_row_dict}. Returns the assistant's spoken text.
     """
     contents.append({"role": "user", "parts": [{"text": user_text}]})
-    last_tool = None
+    last_tool, last_args = None, None
 
     for _ in range(5):  # allow a couple of tool round-trips
         try:
@@ -155,7 +171,7 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict) -> str:
             # If a tool already saved this turn, give a graceful spoken confirmation instead
             # of surfacing a raw error (e.g. when the follow-up call hits a Gemini 429).
             if last_tool:
-                return _FALLBACK_CONFIRM.get(last_tool, "సరే అండి, అయ్యింది.")
+                return _fallback_for(last_tool, last_args)
             raise
         candidates = data.get("candidates") or []
         if not candidates:
@@ -191,7 +207,7 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict) -> str:
                         "in Telugu and offer to help (e.g. place a new order).",
                     }
                 else:
-                    last_tool = name
+                    last_tool, last_args = name, args
                     response = {
                         "status": "success",
                         "id": row.get("id"),
@@ -208,7 +224,7 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict) -> str:
         final = "".join(text_chunks).strip()
         if not final:
             final = (
-                _FALLBACK_CONFIRM.get(last_tool)
+                _fallback_for(last_tool, last_args)
                 if last_tool
                 else "క్షమించండి అండి, మీరు చెప్పింది ఒక్కసారి మళ్ళీ చెప్తారా?"
             )

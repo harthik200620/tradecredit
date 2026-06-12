@@ -221,10 +221,11 @@ let pendingAudioMime = null, currentAudio = null;
 let typingEl = null;
 let httpMode = false, httpHistory = [];   // HTTP fallback when WebSocket is unavailable (e.g. Vercel)
 let noReplyTimer = null, noReplyCount = 0, endingCall = false;
-const NO_REPLY_1_MS = 4000;   // after a question: wait 4s, then the "anukuntunnara" nudge
-const NO_REPLY_2_MS = 6000;   // then wait 6s more, then the WhatsApp close + end the call
-const NUDGE_1 = "అనుకుంటున్నారా అండి?";
-const NUDGE_2 = "సరే అండి, నేను WhatsApp లో details పెడతాను, మీకు ఏం కావాలో message చేయండి.";
+const NO_REPLY_1_MS = 4000;   // after a question: 4s with no usable reply → gentle re-ask
+const NO_REPLY_2_MS = 6000;   // after the re-ask: 6s more with nothing → WhatsApp close + end
+// The re-ask is contextual: a silent note asks the LLM to gently repeat its last question.
+const NO_REPLY_NOTE = "(System note — not from the customer: the customer has gone quiet and hasn't answered. In ONE short, warm Telugu sentence, gently re-ask the same thing you just asked. Don't greet again, don't add anything new, and don't say అనుకుంటున్నారా.)";
+const ENDING_LINE = "సరే అండి, నేను WhatsApp లో details పెడతాను, మీకు ఏం కావాలో message చేయండి.";
 
 // ── boot / admin gate ────────────────────────────────────────────────────────
 let adminPw = '';
@@ -360,10 +361,14 @@ function addOrderCard(o){
   const fresh = !card;
   if(!card){ card=document.createElement('div'); card.className='bk ord'; card.setAttribute('data-id', o.id); }
   const notes = o.notes ? `<div class="row">📝 ${esc(o.notes)}</div>` : '';
+  const ot = (o.order_type||'').toLowerCase();
+  const otLabel = {delivery:'🛵 Delivery', dinein:'🍽 Dine-in', pickup:'🛍 Pickup'}[ot] || '';
+  const otRow = otLabel ? `<div class="row"><span>${otLabel}</span></div>` : '';
   card.innerHTML =
     `<div class="top"><span class="nm">${esc(o.name)}</span><span class="badge">${esc(o.status||'received')}</span></div>`+
     `<div class="row"><span><b>📞</b> ${esc(o.phone)}</span></div>`+
     `<div class="notes">🍽 ${esc(o.items)}</div>`+
+    otRow +
     notes +
     `<div class="when">${o.created_at? esc(o.created_at):''} · #${esc(o.id)}</div>`;
   if(fresh) prependCard(box, card);
@@ -424,7 +429,7 @@ function b64toBlob(b64, mime){
   return new Blob([u8], {type:mime||'audio/mpeg'});
 }
 
-// ── Call handling: 4s → "anukuntunnara" nudge, then 6s → WhatsApp close + end the call ──
+// ── Call handling: 4s no usable reply → gentle re-ask; 6s more → WhatsApp close + end ──
 function clearNoReply(){ if(noReplyTimer){ clearTimeout(noReplyTimer); noReplyTimer=null; } }
 function armNoReply(){
   clearNoReply();
@@ -435,16 +440,31 @@ function armNoReply(){
 async function handleNoReply(){
   noReplyTimer=null;
   if(!listening || endingCall) return;
-  if(waitingForServer || playing){ armNoReply(); return; }   // busy — check again shortly
-  noReplyCount++;
-  if(noReplyCount===1){
-    await sayFixed(NUDGE_1);                                  // "అనుకుంటున్నారా అండి?"
-    if(listening && !endingCall){ setPill('listening'); armNoReply(); }   // now waits NO_REPLY_2_MS
-  }else{
-    endingCall = true;
-    await sayFixed(NUDGE_2);                                  // WhatsApp close line
-    endCall();
-  }
+  if(waitingForServer || playing || capturing){ armNoReply(); return; }   // busy/speaking — recheck
+  if(noReplyCount===0){ triggerReask(); }
+  else { endingCall=true; await sayFixed(ENDING_LINE); endCall(); }
+}
+// Contextual re-ask: hand the LLM a silent note so it repeats its last question in Telugu.
+function triggerReask(){
+  if(!listening || endingCall) return;
+  noReplyCount=1;                       // re-asked once; the next timeout ends the call
+  sendSilent(NO_REPLY_NOTE);
+}
+// Send a turn the customer never sees (no transcript bubble) — used for the re-ask note.
+function sendSilent(note){
+  clearNoReply();
+  showTyping(); setPill('thinking'); waitingForServer=true;
+  if(httpMode){ postTurn({text:note, silent:true}); }
+  else { wsSend({type:'turn_text', text:note, silent:true}); }
+}
+// Broken / unintelligible input (STT returned nothing usable): re-ask once, then end.
+function onBrokenInput(){
+  waitingForServer=false;
+  if(!listening){ setPill('idle'); return; }
+  if(endingCall){ endCall(); return; }
+  rearm();
+  if(noReplyCount===0){ triggerReask(); }
+  else { endingCall=true; sayFixed(ENDING_LINE).then(endCall); }
 }
 // Speak a fixed line via the TTS-only endpoint — no LLM call, so it never uses Gemini quota.
 async function sayFixed(text){
@@ -491,6 +511,7 @@ async function postTurn(opts){
   try{ d=await (await fetch('/api/turn',{method:'POST',body:fd})).json(); }
   catch(e){ hideTyping(); bubble('⚠ network error','assistant'); waitingForServer=false; afterPlay(); return; }
   hideTyping();
+  if(d.error==='no input'){ onBrokenInput(); return; }   // broken/empty audio → re-ask, then end
   if(d.transcript && !opts.silent) bubble(d.transcript,'user');
   if(d.error) bubble('⚠ '+d.error,'assistant');
   if(d.reply) bubble(d.reply,'assistant');
@@ -519,13 +540,13 @@ function onWsMessage(ev){
     case 'order_created': addOrderCard(m.order); switchTab('orders'); endingCall=true; break;
     case 'complaint_created': addComplaintCard(m.complaint); switchTab('complaints'); endingCall=true; break;
     case 'status':
-      if(m.state==='thinking') showTyping();
-      if(m.state==='idle'){
-        hideTyping(); waitingForServer=false;
-        if(endingCall && !playing){ endCall(); }
-        else { rearm(); if(listening) armNoReply(); }
-      }
-      setPill(m.state==='idle' ? (listening?'listening':'idle') : m.state);
+      if(m.state==='thinking'){ showTyping(); setPill('thinking'); break; }
+      if(m.state!=='idle'){ setPill(m.state); break; }
+      hideTyping(); waitingForServer=false;
+      if(endingCall && !playing){ endCall(); break; }
+      if(m.detail==='no speech detected'){ onBrokenInput(); break; }   // broken input → re-ask, then end
+      rearm(); if(listening) armNoReply();
+      setPill(listening?'listening':'idle');
       break;
     case 'error':
       hideTyping();
@@ -597,8 +618,12 @@ async function sendTyped(){
 }
 
 // ── Mic capture (Sarvam path): AudioWorklet + energy VAD + WAV encode ─────────
-let capturing=false, speechFrames=[], preRoll=[], silentSamples=0, speechSamples=0, srate=48000;
-const PREROLL_MS=300, SILENCE_END_MS=700, MIN_SPEECH_MS=350, MAX_TURN_MS=15000;
+let capturing=false, speechFrames=[], preRoll=[], silentSamples=0, speechSamples=0, voicedSamples=0, srate=48000;
+const PREROLL_MS=300, SILENCE_END_MS=1000, MIN_SPEECH_MS=300, MAX_TURN_MS=15000;
+// A full phrase (>= MIN_COMPLETE_MS of actual voice) ends on a normal pause; a short fragment
+// like "నేను" is given up to FRAGMENT_WAIT_MS to continue before we finalize it — so a thinking
+// gap mid-sentence no longer cuts the caller off and ships a half sentence to the STT.
+const MIN_COMPLETE_MS=700, FRAGMENT_WAIT_MS=4000;
 
 async function startMic(){
   try{
@@ -612,7 +637,7 @@ async function startMic(){
   workletNode.port.onmessage = e => onPcm(e.data);
   sourceNode.connect(workletNode);
   workletNode.connect(audioCtx.destination); // node outputs silence; keeps graph pulling
-  capturing=false; speechFrames=[]; preRoll=[]; silentSamples=0; speechSamples=0;
+  capturing=false; speechFrames=[]; preRoll=[]; silentSamples=0; speechSamples=0; voicedSamples=0;
 }
 function stopMic(){
   try{ if(workletNode){workletNode.port.onmessage=null; workletNode.disconnect();} }catch(e){}
@@ -638,22 +663,26 @@ function onPcm(chunk){
     while(total>preMax && preRoll.length>1){ total-=preRoll.shift().length; }
     if(rms>startT){
       capturing=true; speechFrames=preRoll.slice(); preRoll=[];
-      speechSamples=speechFrames.reduce((a,c)=>a+c.length,0); silentSamples=0;
+      speechSamples=speechFrames.reduce((a,c)=>a+c.length,0); silentSamples=0; voicedSamples=0;
+      clearNoReply();                       // caller is speaking — pause the no-reply countdown
     }
   }else{
     speechFrames.push(chunk); speechSamples+=n;
-    if(rms<silT) silentSamples+=n; else silentSamples=0;
-    const silenceEnd=srate*SILENCE_END_MS/1000, maxS=srate*MAX_TURN_MS/1000;
+    if(rms<silT){ silentSamples+=n; } else { silentSamples=0; voicedSamples+=n; }
+    const voicedMs=voicedSamples/srate*1000;
+    const endPauseMs=(voicedMs>=MIN_COMPLETE_MS)?SILENCE_END_MS:FRAGMENT_WAIT_MS;
+    const silenceEnd=srate*endPauseMs/1000, maxS=srate*MAX_TURN_MS/1000;
     if(silentSamples>=silenceEnd || speechSamples>=maxS){ endTurn(); }
   }
 }
 function endTurn(){
   capturing=false;
-  clearNoReply(); noReplyCount=0;
+  clearNoReply();
   const frames=speechFrames; speechFrames=[];
   const durMs = frames.reduce((a,c)=>a+c.length,0)/srate*1000;
-  silentSamples=0; speechSamples=0;
-  if(durMs<MIN_SPEECH_MS) return;            // ignore coughs/clicks
+  silentSamples=0; speechSamples=0; voicedSamples=0;
+  if(durMs<MIN_SPEECH_MS){ if(listening && !endingCall) armNoReply(); return; }   // ignore coughs/clicks
+  noReplyCount=0;                            // a real utterance restarts the no-reply cycle
   let len=0; frames.forEach(f=>len+=f.length);
   const all=new Float32Array(len); let o=0; frames.forEach(f=>{all.set(f,o);o+=f.length;});
   const ds=downsample(all, srate, 16000);

@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS orders (
   name        TEXT    NOT NULL,
   phone       TEXT    NOT NULL,
   items       TEXT    NOT NULL,
+  order_type  TEXT    DEFAULT '',           -- delivery | dinein | pickup
   notes       TEXT    DEFAULT '',
   status      TEXT    DEFAULT 'received',   -- received | changed | confirmed
   created_at  TEXT    DEFAULT (datetime('now','localtime'))
@@ -78,6 +79,10 @@ def init_db() -> None:
         with _lock:
             conn = _connect()
             conn.executescript(SCHEMA)
+            # migrate older DBs created before the order_type column existed
+            cols = [r["name"] for r in conn.execute("PRAGMA table_info(orders)").fetchall()]
+            if "order_type" not in cols:
+                conn.execute("ALTER TABLE orders ADD COLUMN order_type TEXT DEFAULT ''")
             conn.commit()
     except Exception:
         pass
@@ -166,11 +171,12 @@ def insert_order(o: dict) -> dict:
     with _lock:
         conn = _connect()
         cur = conn.execute(
-            "INSERT INTO orders (name, phone, items, notes, status) VALUES (?,?,?,?,?)",
+            "INSERT INTO orders (name, phone, items, order_type, notes, status) VALUES (?,?,?,?,?,?)",
             (
                 str(o.get("name", "")).strip(),
                 str(o.get("phone", "")).strip(),
                 str(o.get("items", "")).strip(),
+                str(o.get("order_type", "") or "").strip().lower(),
                 str(o.get("notes", "") or "").strip(),
                 str(o.get("status", "received")).strip(),
             ),
