@@ -13,7 +13,13 @@ from datetime import datetime
 
 import httpx
 
-from .prompts import build_system_prompt, CREATE_BOOKING_TOOL, LOG_COMPLAINT_TOOL
+from .prompts import (
+    build_system_prompt,
+    CREATE_BOOKING_TOOL,
+    LOG_COMPLAINT_TOOL,
+    CREATE_ORDER_TOOL,
+    UPDATE_ORDER_TOOL,
+)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 # Sanitize the model: trim whitespace/quotes and fall back to a known-good id if the env
@@ -26,6 +32,8 @@ _URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generate
 _REQUIRED_BY_TOOL = {
     "create_booking": ("name", "phone", "party_size", "date", "time"),
     "log_complaint": ("name", "phone", "issue"),
+    "create_order": ("name", "phone", "items"),
+    "update_order": ("phone", "items"),
 }
 _SUCCESS_MSG = {
     "create_booking": "Booking saved. Now warmly confirm to the customer in spoken Telugu and "
@@ -33,11 +41,17 @@ _SUCCESS_MSG = {
     "log_complaint": "Complaint logged. Apologise warmly in Telugu, then tell the customer a "
     "WhatsApp message is coming and ask them to send a photo of the problem there, and that the "
     "team will contact them.",
+    "create_order": "Order placed. Confirm in Telugu: read the items back, say the total in "
+    "Telugu words + రూపాయలు, and mention the WhatsApp follow-up.",
+    "update_order": "Order updated. Confirm the change warmly in Telugu with the new total in "
+    "Telugu words + రూపాయలు.",
 }
 # Spoken even if the follow-up generation fails (e.g. Gemini 429) AFTER the tool already saved.
 _FALLBACK_CONFIRM = {
     "create_booking": "Table book అయ్యింది అండి 🙏 Confirmation details WhatsApp లో పంపిస్తాను, ధన్యవాదాలు!",
     "log_complaint": "చాలా క్షమించండి అండి… మీకు WhatsApp లో message వస్తుంది, ఆ photo అక్కడ పంపండి, మా team త్వరగా మిమ్మల్ని contact చేస్తుంది.",
+    "create_order": "మీ order తీసుకున్నాను అండి 🙏 Details అన్నీ WhatsApp లో పంపిస్తాను, ధన్యవాదాలు!",
+    "update_order": "మీ order update చేశాను అండి 🙏 కొత్త details WhatsApp లో పంపిస్తాను.",
 }
 
 
@@ -55,7 +69,16 @@ async def _generate(contents: list) -> dict:
     body = {
         "systemInstruction": {"parts": [{"text": build_system_prompt(_today())}]},
         "contents": contents,
-        "tools": [{"functionDeclarations": [CREATE_BOOKING_TOOL, LOG_COMPLAINT_TOOL]}],
+        "tools": [
+            {
+                "functionDeclarations": [
+                    CREATE_BOOKING_TOOL,
+                    LOG_COMPLAINT_TOOL,
+                    CREATE_ORDER_TOOL,
+                    UPDATE_ORDER_TOOL,
+                ]
+            }
+        ],
         "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
         "generationConfig": {"temperature": 0.7, "maxOutputTokens": 800},
     }
@@ -114,12 +137,19 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict) -> str:
                 }
             else:
                 row = await handlers[name](args)
-                last_tool = name
-                response = {
-                    "status": "success",
-                    "id": row.get("id"),
-                    "message": _SUCCESS_MSG.get(name, "Done."),
-                }
+                if row is None:
+                    response = {
+                        "status": "error",
+                        "message": "Could not find a matching record. Tell the customer politely "
+                        "in Telugu and offer to help (e.g. place a new order).",
+                    }
+                else:
+                    last_tool = name
+                    response = {
+                        "status": "success",
+                        "id": row.get("id"),
+                        "message": _SUCCESS_MSG.get(name, "Done."),
+                    }
             contents.append(
                 {
                     "role": "user",

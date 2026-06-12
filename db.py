@@ -52,6 +52,16 @@ CREATE TABLE IF NOT EXISTS complaints (
   status      TEXT    DEFAULT 'open',
   created_at  TEXT    DEFAULT (datetime('now','localtime'))
 );
+
+CREATE TABLE IF NOT EXISTS orders (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT    NOT NULL,
+  phone       TEXT    NOT NULL,
+  items       TEXT    NOT NULL,
+  notes       TEXT    DEFAULT '',
+  status      TEXT    DEFAULT 'received',   -- received | changed | confirmed
+  created_at  TEXT    DEFAULT (datetime('now','localtime'))
+);
 """
 
 
@@ -149,6 +159,52 @@ def recent_complaints(limit: int = 50) -> list[dict]:
             "SELECT * FROM complaints ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def insert_order(o: dict) -> dict:
+    """Insert a food order and return the saved row."""
+    with _lock:
+        conn = _connect()
+        cur = conn.execute(
+            "INSERT INTO orders (name, phone, items, notes, status) VALUES (?,?,?,?,?)",
+            (
+                str(o.get("name", "")).strip(),
+                str(o.get("phone", "")).strip(),
+                str(o.get("items", "")).strip(),
+                str(o.get("notes", "") or "").strip(),
+                str(o.get("status", "received")).strip(),
+            ),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM orders WHERE id=?", (cur.lastrowid,)).fetchone()
+        return dict(row)
+
+
+def recent_orders(limit: int = 50) -> list[dict]:
+    with _lock:
+        conn = _connect()
+        rows = conn.execute(
+            "SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def update_latest_order(phone: str, items: str, notes: str | None = None) -> dict | None:
+    """Update the most recent order for a phone number; returns the updated row or None."""
+    with _lock:
+        conn = _connect()
+        row = conn.execute(
+            "SELECT * FROM orders WHERE phone=? ORDER BY id DESC LIMIT 1", (str(phone).strip(),)
+        ).fetchone()
+        if not row:
+            return None
+        new_notes = row["notes"] if notes is None else str(notes).strip()
+        conn.execute(
+            "UPDATE orders SET items=?, notes=?, status='changed' WHERE id=?",
+            (str(items).strip(), new_notes, row["id"]),
+        )
+        conn.commit()
+        return dict(conn.execute("SELECT * FROM orders WHERE id=?", (row["id"],)).fetchone())
 
 
 # Ensure tables exist at import time too — Vercel serverless may not run the ASGI lifespan.

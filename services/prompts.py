@@ -105,6 +105,18 @@ COMPLAINTS / FEEDBACK — if the customer reports a problem with food or a past 
    "చాలా క్షమించండి అండి… మీకు WhatsApp లో message వస్తుంది, దయచేసి ఆ photo అక్కడ పంపండి,
     మా team త్వరగా మిమ్మల్ని contact చేస్తుంది."  Then end politely.
 
+ORDERS (takeaway / delivery):
+1. When the customer wants to ORDER food, note the dishes and quantities from the menu.
+2. Ask their NAME and PHONE number.
+3. Call create_order(name, phone, items, notes).
+4. Confirm in Telugu: read the items back, say the total in Telugu words + "రూపాయలు", and that
+   you'll send the details on WhatsApp. Then end politely.
+
+CHANGING AN ORDER:
+- If a returning customer wants to CHANGE their order, ask their PHONE number and the NEW full
+  list of items, then call update_order(phone, items). Confirm the change in Telugu with the new
+  total in Telugu words + "రూపాయలు".
+
 IF THE CUSTOMER DOES NOT RESPOND (you will receive a note like "(System: the customer has not
 responded …)"):
 - First time: gently re-ask your last question ONCE, in Telugu.
@@ -174,5 +186,47 @@ LOG_COMPLAINT_TOOL = {
             },
         },
         "required": ["name", "phone", "issue"],
+    },
+}
+
+
+# Gemini functionDeclaration for taking a food order.
+CREATE_ORDER_TOOL = {
+    "name": "create_order",
+    "description": (
+        "Place a food order for takeaway or delivery. Call this after collecting the customer's "
+        "name, phone number, and the dishes/quantities they want."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "Customer's name"},
+            "phone": {"type": "string", "description": "Mobile number, digits only"},
+            "items": {
+                "type": "string",
+                "description": "Dishes and quantities, e.g. '2 Chicken Biryani, 1 Gongura Mutton'",
+            },
+            "notes": {"type": "string", "description": "Spice level or special requests; empty if none"},
+        },
+        "required": ["name", "phone", "items"],
+    },
+}
+
+
+# Gemini functionDeclaration for changing an existing order.
+UPDATE_ORDER_TOOL = {
+    "name": "update_order",
+    "description": (
+        "Change/modify an existing order for a returning customer. Identify them by phone number "
+        "and pass the COMPLETE updated list of items."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "phone": {"type": "string", "description": "The phone number on the existing order"},
+            "items": {"type": "string", "description": "The complete updated list of items"},
+            "notes": {"type": "string", "description": "Updated requests; empty if none"},
+        },
+        "required": ["phone", "items"],
     },
 }

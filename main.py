@@ -71,10 +71,30 @@ async def complaints():
     return {"complaints": db.recent_complaints()}
 
 
+@app.get("/api/orders")
+async def orders():
+    return {"orders": db.recent_orders()}
+
+
 @app.post("/api/login")
 async def api_login(password: str = Form(default="")):
     """Admin gate — validates the access password for the demo."""
     return {"ok": password == ADMIN_PASSWORD}
+
+
+@app.post("/api/say")
+async def api_say(text: str = Form(default=""), password: str = Form(default="")):
+    """TTS-only — speak a fixed line without invoking the LLM (used for no-reply nudges)."""
+    if password != ADMIN_PASSWORD:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    audio_b64, mime = None, None
+    try:
+        a, m = await tts.synthesize(text)
+        if a:
+            audio_b64, mime = base64.b64encode(a).decode("ascii"), m
+    except Exception:
+        pass
+    return {"audio_b64": audio_b64, "audio_mime": mime}
 
 
 @app.post("/api/turn")
@@ -105,7 +125,7 @@ async def api_turn(
     if not user_text:
         return {"error": "no input", "history": contents}
 
-    captured = {"booking": None, "complaint": None}
+    captured = {"booking": None, "complaint": None, "order": None}
 
     async def on_booking(args):
         captured["booking"] = db.insert_booking(args)
@@ -115,10 +135,25 @@ async def api_turn(
         captured["complaint"] = db.insert_complaint(args)
         return captured["complaint"]
 
+    async def on_order(args):
+        captured["order"] = db.insert_order(args)
+        return captured["order"]
+
+    async def on_update_order(args):
+        row = db.update_latest_order(args.get("phone", ""), args.get("items", ""), args.get("notes"))
+        if row:
+            captured["order"] = row
+        return row
+
     try:
         reply = await llm.gemini_turn(
             contents, user_text,
-            {"create_booking": on_booking, "log_complaint": on_complaint},
+            {
+                "create_booking": on_booking,
+                "log_complaint": on_complaint,
+                "create_order": on_order,
+                "update_order": on_update_order,
+            },
         )
     except Exception as e:
         return {"error": f"llm: {e}", "transcript": transcript, "history": contents}
@@ -136,6 +171,7 @@ async def api_turn(
         "reply": reply,
         "booking": captured["booking"],
         "complaint": captured["complaint"],
+        "order": captured["order"],
         "history": contents,
         "audio_b64": audio_b64,
         "audio_mime": mime,
@@ -171,11 +207,29 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
         db.log_turn(sid, "tool", "complaint " + json.dumps(args, ensure_ascii=False))
         return row
 
+    async def on_order(args: dict) -> dict:
+        row = db.insert_order(args)
+        await _send(ws, {"type": "order_created", "order": row})
+        db.log_turn(sid, "tool", "order " + json.dumps(args, ensure_ascii=False))
+        return row
+
+    async def on_update_order(args: dict):
+        row = db.update_latest_order(args.get("phone", ""), args.get("items", ""), args.get("notes"))
+        if row:
+            await _send(ws, {"type": "order_created", "order": row})
+            db.log_turn(sid, "tool", "order_update " + json.dumps(args, ensure_ascii=False))
+        return row
+
     try:
         assistant_text = await llm.gemini_turn(
             state["contents"],
             text,
-            {"create_booking": on_booking, "log_complaint": on_complaint},
+            {
+                "create_booking": on_booking,
+                "log_complaint": on_complaint,
+                "create_order": on_order,
+                "update_order": on_update_order,
+            },
         )
     except Exception as e:
         await _send(ws, {"type": "error", "where": "llm", "message": str(e), "recoverable": True})

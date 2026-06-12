@@ -75,6 +75,8 @@
   .bk-empty{margin:auto;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;padding:20px}
   .bk{background:var(--paper);border:1px solid var(--line);border-left:4px solid var(--copper);border-radius:12px;padding:12px 14px;animation:rise .3s ease}
   .bk.cmp{border-left-color:var(--alert)}
+  .bk.ord{border-left-color:var(--ok)}
+  .bk.ord .badge{background:var(--ok)}
   .bk .top{display:flex;align-items:baseline;gap:8px}
   .bk .nm{font-family:'Fraunces',serif;font-weight:600;font-size:16px;color:var(--green-deep)}
   .bk .badge{margin-left:auto;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:var(--copper);border-radius:999px;padding:3px 9px}
@@ -174,10 +176,14 @@
     <div class="panel">
       <div class="phead tabs">
         <button class="tab on" id="tabBookings">Bookings <span class="cnt" id="bkcount">0</span></button>
+        <button class="tab" id="tabOrders">Orders <span class="cnt" id="orcount">0</span></button>
         <button class="tab" id="tabComplaints">Complaints <span class="cnt" id="cpcount">0</span></button>
       </div>
       <div class="listbox" id="bookings">
         <div class="bk-empty" id="bkEmpty">No bookings yet.<br>When the agent confirms a table, it appears here and is saved to the database.</div>
+      </div>
+      <div class="listbox" id="orders" style="display:none">
+        <div class="bk-empty" id="orEmpty">No orders yet.<br>When the agent takes a food order, it appears here — and a customer can call back to change it.</div>
       </div>
       <div class="listbox" id="complaints" style="display:none">
         <div class="bk-empty" id="cpEmpty">No complaints yet.<br>If a customer reports a problem, it's logged here — and they're asked to send a photo on WhatsApp so the team can follow up.</div>
@@ -215,7 +221,10 @@ let pendingAudioMime = null, currentAudio = null;
 let typingEl = null;
 let httpMode = false, httpHistory = [];   // HTTP fallback when WebSocket is unavailable (e.g. Vercel)
 let noReplyTimer = null, noReplyCount = 0, endingCall = false;
-const NO_REPLY_MS = 6000;   // wait this long for the caller to speak before re-prompting / closing
+const NO_REPLY_1_MS = 4000;   // after a question: wait 4s, then the "anukuntunnara" nudge
+const NO_REPLY_2_MS = 6000;   // then wait 6s more, then the WhatsApp close + end the call
+const NUDGE_1 = "అనుకుంటున్నారా అండి?";
+const NUDGE_2 = "సరే అండి, నేను WhatsApp లో details పెడతాను, మీకు ఏం కావాలో message చేయండి.";
 
 // ── boot / admin gate ────────────────────────────────────────────────────────
 let adminPw = '';
@@ -249,6 +258,7 @@ async function init(){
   }catch(e){ CONFIG = {stt:'webspeech',tts:'none',llm_ok:false}; }
   renderCfg();
   await loadBookings();
+  await loadOrders();
   await loadComplaints();
 }
 
@@ -285,6 +295,14 @@ async function loadComplaints(){
     $('complaints').querySelectorAll('.bk').forEach(n=>n.remove());
     (complaints||[]).slice().reverse().forEach(addComplaintCard);
     $('cpcount').textContent = (complaints? complaints.length:0);
+  }catch(e){}
+}
+async function loadOrders(){
+  try{
+    const {orders} = await (await fetch('/api/orders')).json();
+    $('orders').querySelectorAll('.bk').forEach(n=>n.remove());
+    (orders||[]).slice().reverse().forEach(addOrderCard);
+    $('orcount').textContent = (orders? orders.length:0);
   }catch(e){}
 }
 
@@ -336,14 +354,30 @@ function addComplaintCard(c){
   prependCard($('complaints'), card);
   $('cpcount').textContent = $('complaints').querySelectorAll('.bk').length;
 }
+function addOrderCard(o){
+  const box=$('orders');
+  let card = box.querySelector('.bk[data-id="'+o.id+'"]');  // update in place if the order changed
+  const fresh = !card;
+  if(!card){ card=document.createElement('div'); card.className='bk ord'; card.setAttribute('data-id', o.id); }
+  const notes = o.notes ? `<div class="row">📝 ${esc(o.notes)}</div>` : '';
+  card.innerHTML =
+    `<div class="top"><span class="nm">${esc(o.name)}</span><span class="badge">${esc(o.status||'received')}</span></div>`+
+    `<div class="row"><span><b>📞</b> ${esc(o.phone)}</span></div>`+
+    `<div class="notes">🍽 ${esc(o.items)}</div>`+
+    notes +
+    `<div class="when">${o.created_at? esc(o.created_at):''} · #${esc(o.id)}</div>`;
+  if(fresh) prependCard(box, card);
+  $('orcount').textContent = box.querySelectorAll('.bk').length;
+}
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 function switchTab(which){
-  const b = which==='bookings';
-  $('tabBookings').classList.toggle('on',b);
-  $('tabComplaints').classList.toggle('on',!b);
-  $('bookings').style.display = b?'':'none';
-  $('complaints').style.display = b?'none':'';
+  const map = {bookings:'tabBookings', orders:'tabOrders', complaints:'tabComplaints'};
+  for(const k in map){
+    const on = (k===which);
+    $(map[k]).classList.toggle('on', on);
+    $(k).style.display = on ? '' : 'none';
+  }
 }
 
 function setPill(state){
@@ -390,28 +424,44 @@ function b64toBlob(b64, mime){
   return new Blob([u8], {type:mime||'audio/mpeg'});
 }
 
-// ── Professional call handling: re-ask if the caller goes quiet, then close + end ──
+// ── Call handling: 4s → "anukuntunnara" nudge, then 6s → WhatsApp close + end the call ──
 function clearNoReply(){ if(noReplyTimer){ clearTimeout(noReplyTimer); noReplyTimer=null; } }
 function armNoReply(){
   clearNoReply();
   if(!listening || endingCall) return;
-  noReplyTimer=setTimeout(handleNoReply, NO_REPLY_MS);
+  const delay = (noReplyCount===0) ? NO_REPLY_1_MS : NO_REPLY_2_MS;
+  noReplyTimer = setTimeout(handleNoReply, delay);
 }
-function handleNoReply(){
+async function handleNoReply(){
   noReplyTimer=null;
   if(!listening || endingCall) return;
   if(waitingForServer || playing){ armNoReply(); return; }   // busy — check again shortly
   noReplyCount++;
-  if(noReplyCount>=2){
-    endingCall=true;
-    sendSignal('(System: the customer has not responded again. Politely CLOSE the call now in Telugu — say you will send the details on WhatsApp and ask them to please send their query there, then a short goodbye.)');
+  if(noReplyCount===1){
+    await sayFixed(NUDGE_1);                                  // "అనుకుంటున్నారా అండి?"
+    if(listening && !endingCall){ setPill('listening'); armNoReply(); }   // now waits NO_REPLY_2_MS
   }else{
-    sendSignal('(System: the customer has not responded for a few seconds. Gently re-ask your last question ONCE, in Telugu.)');
+    endingCall = true;
+    await sayFixed(NUDGE_2);                                  // WhatsApp close line
+    endCall();
   }
 }
-function sendSignal(text){
-  if(httpMode){ postTurn({text, silent:true}); }
-  else { waitingForServer=true; wsSend({type:'turn_text', text, silent:true}); }
+// Speak a fixed line via the TTS-only endpoint — no LLM call, so it never uses Gemini quota.
+async function sayFixed(text){
+  bubble(text, 'assistant');
+  try{
+    const fd=new FormData(); fd.append('text', text); fd.append('password', adminPw);
+    const j = await (await fetch('/api/say',{method:'POST',body:fd})).json();
+    if(j && j.audio_b64){ await playAndWait(b64toBlob(j.audio_b64, j.audio_mime)); }
+  }catch(e){}
+}
+function playAndWait(blob){
+  return new Promise(res=>{
+    playing=true; setPill('speaking');
+    const url=URL.createObjectURL(blob); const a=new Audio(url); currentAudio=a;
+    const done=()=>{ playing=false; try{URL.revokeObjectURL(url);}catch(e){} res(); };
+    a.onended=done; a.onerror=done; a.play().catch(done);
+  });
 }
 function sysNote(t){
   clearEmpty();
@@ -445,6 +495,7 @@ async function postTurn(opts){
   if(d.error) bubble('⚠ '+d.error,'assistant');
   if(d.reply) bubble(d.reply,'assistant');
   if(d.booking){ addBookingCard(d.booking); switchTab('bookings'); endingCall=true; }
+  if(d.order){ addOrderCard(d.order); switchTab('orders'); endingCall=true; }
   if(d.complaint){ addComplaintCard(d.complaint); switchTab('complaints'); endingCall=true; }
   if(Array.isArray(d.history)) httpHistory=d.history;
   waitingForServer=false;
@@ -465,6 +516,7 @@ function onWsMessage(ev){
     case 'assistant_text': hideTyping(); bubble(m.text,'assistant'); break;
     case 'tts_audio_meta': pendingAudioMime=m.mime; break;
     case 'booking_created': addBookingCard(m.booking); switchTab('bookings'); endingCall=true; break;
+    case 'order_created': addOrderCard(m.order); switchTab('orders'); endingCall=true; break;
     case 'complaint_created': addComplaintCard(m.complaint); switchTab('complaints'); endingCall=true; break;
     case 'status':
       if(m.state==='thinking') showTyping();
@@ -489,6 +541,7 @@ $('btnStop').onclick  = stopTalking;
 $('btnRestart').onclick = restart;
 $('btnSend').onclick = sendTyped;
 $('tabBookings').onclick = ()=>switchTab('bookings');
+$('tabOrders').onclick = ()=>switchTab('orders');
 $('tabComplaints').onclick = ()=>switchTab('complaints');
 $('typebox').addEventListener('keydown',e=>{ if(e.key==='Enter') sendTyped(); });
 $('sens').addEventListener('input',e=>{
@@ -525,9 +578,10 @@ function restart(){
   $('convo').querySelectorAll('.msg,.typing').forEach(n=>n.remove());
   const e=$('convoEmpty'); if(e) e.style.display='';
   $('bookings').querySelectorAll('.bk').forEach(n=>n.remove());
+  $('orders').querySelectorAll('.bk').forEach(n=>n.remove());
   $('complaints').querySelectorAll('.bk').forEach(n=>n.remove());
-  $('bkEmpty').style.display=''; $('cpEmpty').style.display='';
-  $('bkcount').textContent='0'; $('cpcount').textContent='0';
+  $('bkEmpty').style.display=''; $('orEmpty').style.display=''; $('cpEmpty').style.display='';
+  $('bkcount').textContent='0'; $('orcount').textContent='0'; $('cpcount').textContent='0';
   switchTab('bookings');
   wsSend({type:'control',action:'restart'});
 }
