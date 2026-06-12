@@ -58,6 +58,7 @@ async def config():
         "voice_ok": tts.eleven_ok(),
         "voice_detail": tts.eleven_reason(),
         "model": llm.GEMINI_MODEL,
+        "llm_keys": llm.key_count(),
     }
 
 

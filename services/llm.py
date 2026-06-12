@@ -21,10 +21,37 @@ from .prompts import (
     UPDATE_ORDER_TOOL,
 )
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-# Sanitize the model: trim whitespace/quotes and fall back to a known-good id if the env
-# value is empty or garbled (e.g. a stray character from a dashboard bulk-paste).
-_raw_model = os.getenv("GEMINI_MODEL", "").strip().strip('"').strip("'").strip()
+def _clean(name: str, default: str = "") -> str:
+    """Read an env var, removing BOM/zero-width chars plus quotes/whitespace."""
+    v = os.getenv(name, default) or ""
+    for ch in (chr(0xFEFF), chr(0x200B), chr(0x200C), chr(0x200D)):
+        v = v.replace(ch, "")
+    return v.strip().strip('"').strip("'").strip()
+
+
+def _load_keys() -> list[str]:
+    """Gather Gemini API keys for rotation: a comma-separated GEMINI_API_KEYS, plus the
+    numbered GEMINI_API_KEY / GEMINI_API_KEY_2.. vars. Deduped, empties dropped."""
+    raw = []
+    combo = _clean("GEMINI_API_KEYS")
+    if combo:
+        raw += [p.strip() for p in combo.split(",")]
+    for name in ("GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
+                 "GEMINI_API_KEY_4", "GEMINI_API_KEY_5"):
+        raw.append(_clean(name))
+    out, seen = [], set()
+    for k in raw:
+        if k and k not in seen:
+            seen.add(k)
+            out.append(k)
+    return out
+
+
+_KEYS = _load_keys()
+_key_idx = 0   # index of the current key; advances on quota/invalid errors and persists
+
+# Sanitize the model: fall back to a known-good id if the env value is empty or garbled.
+_raw_model = _clean("GEMINI_MODEL")
 GEMINI_MODEL = _raw_model if re.fullmatch(r"gemini-[A-Za-z0-9.\-]+", _raw_model) else "gemini-2.5-flash-lite"
 _URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -56,16 +83,31 @@ _FALLBACK_CONFIRM = {
 
 
 def llm_available() -> bool:
-    return bool(GEMINI_API_KEY)
+    return bool(_KEYS)
+
+
+def key_count() -> int:
+    return len(_KEYS)
 
 
 def _today() -> str:
     return datetime.now().strftime("%A, %Y-%m-%d")
 
 
+def _should_rotate(status: int, text: str) -> bool:
+    """Rotate to the next key on quota (429) or key-permission errors."""
+    if status == 429:
+        return True
+    if status in (400, 403):
+        t = (text or "").upper()
+        return any(s in t for s in ("API_KEY_INVALID", "API KEY NOT VALID", "QUOTA", "PERMISSION_DENIED"))
+    return False
+
+
 async def _generate(contents: list) -> dict:
-    if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY not set")
+    global _key_idx
+    if not _KEYS:
+        raise RuntimeError("No Gemini API key set")
     body = {
         "systemInstruction": {"parts": [{"text": build_system_prompt(_today())}]},
         "contents": contents,
@@ -82,15 +124,20 @@ async def _generate(contents: list) -> dict:
         "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
         "generationConfig": {"temperature": 0.7, "maxOutputTokens": 800},
     }
+    url = _URL.format(model=GEMINI_MODEL)
+    last_err = None
     async with httpx.AsyncClient(timeout=40) as client:
-        resp = await client.post(
-            _URL.format(model=GEMINI_MODEL),
-            params={"key": GEMINI_API_KEY},
-            json=body,
-        )
-        if resp.status_code >= 400:
+        # Try keys starting at the current one; rotate past any that are quota'd/invalid.
+        for _ in range(len(_KEYS)):
+            resp = await client.post(url, params={"key": _KEYS[_key_idx]}, json=body)
+            if resp.status_code < 400:
+                return resp.json()
+            last_err = f"Gemini {resp.status_code} (key {_key_idx + 1}/{len(_KEYS)}): {resp.text[:160]}"
+            if _should_rotate(resp.status_code, resp.text):
+                _key_idx = (_key_idx + 1) % len(_KEYS)
+                continue
             raise RuntimeError(f"Gemini {resp.status_code}: {resp.text[:300]}")
-        return resp.json()
+    raise RuntimeError("All Gemini keys exhausted — " + (last_err or "quota/invalid"))
 
 
 async def gemini_turn(contents: list, user_text: str, handlers: dict) -> str:
