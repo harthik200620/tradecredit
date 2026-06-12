@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Krishnapatnam · AI Voice Receptionist — by Sahayak AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Poppins:wght@400;500;600&family=Noto+Sans+Telugu:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FAF6EE; --paper2:#F3EBDC; --card:#FFFEFB;
+    --copper:#BE754A; --copper-deep:#8C4F2B;
+    --green-deep:#22372A; --green-ink:#1B2C21;
+    --gold2:#E9C77E; --line:#E6DAC4;
+    --ink:#2A2620; --muted:#7C7363;
+    --ok:#3E7C5A; --warn:#B5732B; --alert:#C24A33;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Poppins','Noto Sans Telugu',system-ui,sans-serif;
+    background-image:radial-gradient(transparent 60%, rgba(190,117,74,.04)),
+       url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.025'/%3E%3C/svg%3E");
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 20px 40px}
+  /* Header */
+  header{display:flex;align-items:center;gap:16px;padding:8px 4px 18px;border-bottom:1px solid var(--line)}
+  .mark{flex:0 0 auto}
+  .brand h1{font-family:'Fraunces',serif;font-weight:700;font-size:30px;line-height:1;margin:0;color:var(--green-deep)}
+  .brand .sub{font-size:13px;color:var(--muted);margin-top:4px;letter-spacing:.04em}
+  .brand .by{font-size:11px;color:var(--copper-deep);margin-top:3px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+  .pill{margin-left:auto;display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--line);
+        border-radius:999px;padding:8px 15px;font-size:13px;font-weight:500;color:var(--green-ink);box-shadow:0 1px 0 rgba(0,0,0,.02)}
+  .dot{width:9px;height:9px;border-radius:50%;background:#bbb;flex:0 0 auto}
+  .dot.live{background:var(--ok);box-shadow:0 0 0 0 rgba(62,124,90,.5);animation:pulse 1.6s infinite}
+  .dot.busy{background:var(--copper)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(62,124,90,.45)}70%{box-shadow:0 0 0 10px rgba(62,124,90,0)}100%{box-shadow:0 0 0 0 rgba(62,124,90,0)}}
+
+  .cfgbar{font-size:12px;color:var(--muted);margin:10px 2px 0;display:flex;gap:14px;flex-wrap:wrap}
+  .cfgbar b{color:var(--green-ink);font-weight:600}
+  .cfgbar .bad{color:var(--warn)}
+
+  /* Layout */
+  .grid{display:grid;grid-template-columns:1fr 380px;gap:20px;margin-top:18px}
+  @media(max-width:880px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 6px 22px rgba(40,30,15,.05);display:flex;flex-direction:column;overflow:hidden}
+  .phead{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line);background:linear-gradient(var(--card),var(--paper2))}
+  .phead .ttl{font-family:'Fraunces',serif;font-weight:600;font-size:16px;color:var(--green-deep)}
+  .phead .meta{margin-left:auto;font-size:12px;color:var(--muted)}
+
+  /* Transcript */
+  .convo{min-height:430px;max-height:58vh;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
+  .empty{margin:auto;text-align:center;color:var(--muted);font-size:14px;max-width:300px;line-height:1.6}
+  .empty .big{font-family:'Fraunces',serif;font-size:19px;color:var(--green-deep);margin-bottom:6px}
+  .msg{max-width:78%;padding:11px 15px;border-radius:16px;font-size:15px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;animation:rise .25s ease}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .msg.bot{align-self:flex-start;background:var(--paper2);color:var(--ink);border-bottom-left-radius:5px;border:1px solid var(--line)}
+  .msg.user{align-self:flex-end;background:var(--green-deep);color:#F3EFE6;border-bottom-right-radius:5px}
+  .msg .who{display:block;font-size:11px;font-weight:600;letter-spacing:.04em;opacity:.7;margin-bottom:3px}
+  .typing{align-self:flex-start;background:var(--paper2);border:1px solid var(--line);border-radius:16px;border-bottom-left-radius:5px;padding:13px 16px;display:flex;gap:5px}
+  .typing span{width:7px;height:7px;border-radius:50%;background:var(--copper);opacity:.5;animation:blink 1.3s infinite}
+  .typing span:nth-child(2){animation-delay:.2s}.typing span:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,80%,100%{opacity:.3;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+
+  /* Right panel: tabs + cards */
+  .phead.tabs{padding:0;gap:0}
+  .tab{flex:1;border:none;border-bottom:2px solid transparent;border-radius:0;background:transparent;padding:14px 8px;font-size:14px;color:var(--muted);font-family:'Fraunces',serif;font-weight:600;cursor:pointer}
+  .tab.on{color:var(--green-deep);border-bottom-color:var(--copper);background:linear-gradient(var(--card),var(--paper2))}
+  .tab .cnt{display:inline-block;min-width:20px;font-family:'Poppins',sans-serif;font-size:11px;background:var(--line);color:var(--green-ink);border-radius:999px;padding:1px 7px;margin-left:3px}
+  .tab.on .cnt{background:var(--copper);color:#fff}
+  .listbox{padding:14px;display:flex;flex-direction:column;gap:11px;min-height:430px;max-height:58vh;overflow-y:auto}
+  .bk-empty{margin:auto;text-align:center;color:var(--muted);font-size:13px;line-height:1.6;padding:20px}
+  .bk{background:var(--paper);border:1px solid var(--line);border-left:4px solid var(--copper);border-radius:12px;padding:12px 14px;animation:rise .3s ease}
+  .bk.cmp{border-left-color:var(--alert)}
+  .bk .top{display:flex;align-items:baseline;gap:8px}
+  .bk .nm{font-family:'Fraunces',serif;font-weight:600;font-size:16px;color:var(--green-deep)}
+  .bk .badge{margin-left:auto;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:var(--copper);border-radius:999px;padding:3px 9px}
+  .bk.cmp .badge{background:var(--alert)}
+  .bk .src{font-size:12px;color:var(--copper-deep);font-weight:600;margin-top:3px}
+  .bk .row{font-size:13px;color:var(--ink);margin-top:6px;display:flex;flex-wrap:wrap;gap:4px 16px}
+  .bk .row b{color:var(--copper-deep);font-weight:600}
+  .bk .notes{font-size:13px;color:var(--ink);margin-top:6px;font-style:italic;background:var(--paper2);border-radius:8px;padding:7px 10px}
+  .bk .when{font-size:11px;color:var(--muted);margin-top:7px}
+
+  /* Controls */
+  .controls{margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px 18px;box-shadow:0 6px 22px rgba(40,30,15,.05)}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  button{font-family:inherit;font-size:14px;font-weight:600;border-radius:11px;border:1px solid var(--line);padding:11px 18px;cursor:pointer;background:var(--card);color:var(--green-ink);transition:transform .08s,box-shadow .15s,background .15s}
+  button:hover{transform:translateY(-1px)}
+  button:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  .btn-start{background:var(--copper);color:#fff;border-color:var(--copper-deep)}
+  .btn-start.on{background:var(--green-deep);border-color:var(--green-ink)}
+  .btn-stop{background:#fff}
+  .status{margin-left:auto;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+  .sens{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12px;color:var(--muted)}
+  .sens input{accent-color:var(--copper)}
+  .typer{display:flex;gap:8px;margin-top:12px}
+  .typer input{flex:1;font-family:inherit;font-size:14px;padding:11px 14px;border-radius:11px;border:1px solid var(--line);background:var(--paper)}
+  .typer input:focus{outline:2px solid var(--gold2);outline-offset:1px}
+  .hint{font-size:11px;color:var(--muted);margin-top:9px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark">
+      <svg width="58" height="58" viewBox="0 0 58 58" aria-hidden="true">
+        <circle cx="29" cy="29" r="27" fill="#22372A"/>
+        <circle cx="29" cy="29" r="27" fill="none" stroke="#BE754A" stroke-width="2"/>
+        <circle cx="29" cy="29" r="21" fill="none" stroke="#E9C77E" stroke-width="1" opacity=".5"/>
+        <text x="29" y="38" text-anchor="middle" font-family="Fraunces,serif" font-weight="700" font-size="26" fill="#E9C77E">K</text>
+      </svg>
+    </div>
+    <div class="brand">
+      <h1>Krishnapatnam</h1>
+      <div class="sub">Andhra Kitchen · Hyderabad · 4.5★</div>
+      <div class="by">AI Voice Receptionist · powered by Sahayak AI</div>
+    </div>
+    <div class="pill"><span class="dot" id="livedot"></span><span id="pilltext">Idle</span></div>
+  </header>
+
+  <div class="cfgbar" id="cfgbar"></div>
+
+  <div class="grid">
+    <!-- Transcript -->
+    <div class="panel">
+      <div class="phead">
+        <span class="ttl">Live conversation</span>
+        <span class="meta" id="langmeta">Telugu · English</span>
+      </div>
+      <div class="convo" id="convo">
+        <div class="empty" id="convoEmpty">
+          <div class="big">నమస్తే 🙏</div>
+          Press <b>Start talking</b> and speak in Telugu or English —<br>
+          "7 గంటలకి 4 మందికి table కావాలి", or report a problem like<br>
+          "Swiggy లో order చేశా, oil బాగాలేదు" — and watch the agent act live.
+        </div>
+      </div>
+    </div>
+
+    <!-- Bookings + Complaints -->
+    <div class="panel">
+      <div class="phead tabs">
+        <button class="tab on" id="tabBookings">Bookings <span class="cnt" id="bkcount">0</span></button>
+        <button class="tab" id="tabComplaints">Complaints <span class="cnt" id="cpcount">0</span></button>
+      </div>
+      <div class="listbox" id="bookings">
+        <div class="bk-empty" id="bkEmpty">No bookings yet.<br>When the agent confirms a table, it appears here and is saved to the database.</div>
+      </div>
+      <div class="listbox" id="complaints" style="display:none">
+        <div class="bk-empty" id="cpEmpty">No complaints yet.<br>If a customer reports a problem, it's logged here — and they're asked to send a photo on WhatsApp so the team can follow up.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <div class="btnrow">
+      <button class="btn-start" id="btnStart">● Start talking</button>
+      <button class="btn-stop" id="btnStop" disabled>■ Stop</button>
+      <button id="btnRestart">⟳ Restart</button>
+      <div class="status"><span class="dot" id="statdot"></span><span id="statustext">Not connected</span></div>
+    </div>
+    <div class="sens">
+      Mic sensitivity
+      <input type="range" id="sens" min="0.006" max="0.04" step="0.002" value="0.016">
+      <span id="sensval">normal</span>
+    </div>
+    <div class="typer">
+      <input id="typebox" placeholder="…or type a message to the agent (Telugu or English) and press Enter" />
+      <button id="btnSend">Send</button>
+    </div>
+    <div class="hint" id="hint">Tip: use Chrome or Edge, allow the microphone, and speak one sentence at a time — the agent replies after a short pause. You can also type above to demo without a mic.</div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let CONFIG = null, ws = null, listening = false, waitingForServer = false, playing = false;
+let audioCtx = null, micStream = null, workletNode = null, sourceNode = null;
+let recog = null;                 // Web Speech fallback
+let pendingAudioMime = null, currentAudio = null;
+let typingEl = null;
+
+// ── boot ─────────────────────────────────────────────────────────────────────
+init();
+async function init(){
+  try{
+    CONFIG = await (await fetch('/config')).json();
+  }catch(e){ CONFIG = {stt:'webspeech',tts:'none',llm_ok:false}; }
+  renderCfg();
+  await loadBookings();
+  await loadComplaints();
+}
+
+function renderCfg(){
+  const c = CONFIG;
+  const sttTxt = c.stt === 'sarvam' ? 'Sarvam Saaras v3' : 'Browser (te-IN)';
+  let voiceTxt;
+  if(c.tts === 'elevenlabs') voiceTxt = 'ElevenLabs (eleven_v3)';
+  else if(c.tts === 'sarvam') voiceTxt = 'Sarvam Bulbul';
+  else voiceTxt = 'text only';
+  const llmCls = c.llm_ok ? '' : 'bad';
+  let extra = '';
+  if(c.tts !== 'elevenlabs' && c.voice_detail && c.voice_detail!=='ok')
+     extra = `<span class="bad">· ${c.voice_detail}</span>`;
+  $('cfgbar').innerHTML =
+    `<span>Brain: <b class="${llmCls}">Gemini 2.5 Flash${c.llm_ok?'':' — NO KEY'}</b></span>`+
+    `<span>Ears: <b>${sttTxt}</b></span>`+
+    `<span>Voice: <b>${voiceTxt}</b> ${extra}</span>`;
+  if(c.stt!=='sarvam') $('langmeta').textContent = 'Telugu (browser STT)';
+}
+
+async function loadBookings(){
+  try{
+    const {bookings} = await (await fetch('/api/bookings')).json();
+    $('bookings').querySelectorAll('.bk').forEach(n=>n.remove());
+    (bookings||[]).slice().reverse().forEach(addBookingCard);
+    $('bkcount').textContent = (bookings? bookings.length:0);
+  }catch(e){}
+}
+async function loadComplaints(){
+  try{
+    const {complaints} = await (await fetch('/api/complaints')).json();
+    $('complaints').querySelectorAll('.bk').forEach(n=>n.remove());
+    (complaints||[]).slice().reverse().forEach(addComplaintCard);
+    $('cpcount').textContent = (complaints? complaints.length:0);
+  }catch(e){}
+}
+
+// ── UI helpers ───────────────────────────────────────────────────────────────
+function clearEmpty(){ const e=$('convoEmpty'); if(e) e.style.display='none'; }
+function bubble(text, role){
+  clearEmpty();
+  const d=document.createElement('div');
+  d.className='msg '+(role==='user'?'user':'bot');
+  const who=document.createElement('span'); who.className='who';
+  who.textContent = role==='user' ? 'Customer' : 'Lakshmi · Krishnapatnam';
+  d.appendChild(who);
+  d.appendChild(document.createTextNode(text));
+  $('convo').appendChild(d);
+  $('convo').scrollTop = $('convo').scrollHeight;
+}
+function showTyping(){
+  hideTyping(); clearEmpty();
+  typingEl=document.createElement('div'); typingEl.className='typing';
+  typingEl.innerHTML='<span></span><span></span><span></span>';
+  $('convo').appendChild(typingEl); $('convo').scrollTop=$('convo').scrollHeight;
+}
+function hideTyping(){ if(typingEl){typingEl.remove(); typingEl=null;} }
+
+function prependCard(box, card){
+  const empty=box.querySelector('.bk-empty'); if(empty) empty.style.display='none';
+  box.insertBefore(card, box.querySelector('.bk') || null);
+}
+function addBookingCard(b){
+  const card=document.createElement('div'); card.className='bk';
+  const notes = b.notes ? `<div class="notes">“${esc(b.notes)}”</div>` : '';
+  card.innerHTML =
+    `<div class="top"><span class="nm">${esc(b.name)}</span><span class="badge">${esc(b.status||'confirmed')}</span></div>`+
+    `<div class="row"><span><b>📞</b> ${esc(b.phone)}</span><span><b>👥</b> ${esc(b.party_size)}</span></div>`+
+    `<div class="row"><span><b>📅</b> ${esc(b.date)}</span><span><b>🕐</b> ${esc(b.time)}</span></div>`+
+    notes + `<div class="when">${b.created_at? 'saved '+esc(b.created_at):''} · #${esc(b.id)}</div>`;
+  prependCard($('bookings'), card);
+  $('bkcount').textContent = $('bookings').querySelectorAll('.bk').length;
+}
+function addComplaintCard(c){
+  const card=document.createElement('div'); card.className='bk cmp';
+  const src = c.source ? `<div class="src">ordered via ${esc(c.source)}</div>` : '';
+  card.innerHTML =
+    `<div class="top"><span class="nm">${esc(c.name)}</span><span class="badge">${esc(c.status||'open')}</span></div>`+
+    src +
+    `<div class="row"><span><b>📞</b> ${esc(c.phone)}</span></div>`+
+    `<div class="notes">“${esc(c.issue)}”</div>`+
+    `<div class="when">📷 photo requested on WhatsApp${c.created_at? ' · '+esc(c.created_at):''} · #${esc(c.id)}</div>`;
+  prependCard($('complaints'), card);
+  $('cpcount').textContent = $('complaints').querySelectorAll('.bk').length;
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function switchTab(which){
+  const b = which==='bookings';
+  $('tabBookings').classList.toggle('on',b);
+  $('tabComplaints').classList.toggle('on',!b);
+  $('bookings').style.display = b?'':'none';
+  $('complaints').style.display = b?'none':'';
+}
+
+function setPill(state){
+  const dot=$('livedot'), t=$('pilltext'), sd=$('statdot'), st=$('statustext');
+  const map={
+    listening:['live','Listening…','live','Listening — speak now'],
+    transcribing:['busy','Hearing…','busy','Transcribing your speech'],
+    thinking:['busy','Thinking…','busy','Agent is thinking'],
+    speaking:['busy','Speaking…','busy','Agent is replying'],
+    idle:['', listening?'Ready':'Idle','', listening?'Ready — speak when you like':'Idle'],
+    off:['','Idle','','Not connected']
+  };
+  const m=map[state]||map.off;
+  dot.className='dot '+m[0]; t.textContent=m[1]; sd.className='dot '+m[2]; st.textContent=m[3];
+}
+
+// ── WebSocket ────────────────────────────────────────────────────────────────
+function connectWS(){
+  return new Promise((resolve,reject)=>{
+    const proto = location.protocol==='https:'?'wss':'ws';
+    ws = new WebSocket(`${proto}://${location.host}/ws`);
+    ws.binaryType='arraybuffer';
+    ws.onopen=()=>{ ws.send(JSON.stringify({type:'hello'})); resolve(); };
+    ws.onerror=(e)=>reject(e);
+    ws.onclose=()=>{ };
+    ws.onmessage=onWsMessage;
+  });
+}
+function wsSend(obj){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(obj)); }
+
+function onWsMessage(ev){
+  if(typeof ev.data !== 'string'){           // binary = TTS audio
+    const blob = new Blob([ev.data], {type: pendingAudioMime||'audio/mpeg'});
+    pendingAudioMime=null;
+    playAudio(blob);
+    return;
+  }
+  const m = JSON.parse(ev.data);
+  switch(m.type){
+    case 'transcript': hideTyping(); bubble(m.text,'user'); break;
+    case 'assistant_text': hideTyping(); bubble(m.text,'assistant'); break;
+    case 'tts_audio_meta': pendingAudioMime=m.mime; break;
+    case 'booking_created': addBookingCard(m.booking); switchTab('bookings'); break;
+    case 'complaint_created': addComplaintCard(m.complaint); switchTab('complaints'); break;
+    case 'status':
+      if(m.state==='thinking') showTyping();
+      if(m.state==='idle'){ hideTyping(); waitingForServer=false; rearm(); }
+      setPill(m.state==='idle' ? (listening?'listening':'idle') : m.state);
+      break;
+    case 'error':
+      hideTyping();
+      bubble('⚠ '+(m.where||'')+': '+m.message,'assistant');
+      waitingForServer=false; rearm();
+      break;
+  }
+}
+
+// ── Controls ─────────────────────────────────────────────────────────────────
+$('btnStart').onclick = startTalking;
+$('btnStop').onclick  = stopTalking;
+$('btnRestart').onclick = restart;
+$('btnSend').onclick = sendTyped;
+$('tabBookings').onclick = ()=>switchTab('bookings');
+$('tabComplaints').onclick = ()=>switchTab('complaints');
+$('typebox').addEventListener('keydown',e=>{ if(e.key==='Enter') sendTyped(); });
+$('sens').addEventListener('input',e=>{
+  const v=parseFloat(e.target.value);
+  $('sensval').textContent = v<0.012?'sensitive':(v>0.026?'quiet room':'normal');
+});
+
+async function startTalking(){
+  if(listening) return;
+  try{
+    if(!ws || ws.readyState!==1) await connectWS();
+  }catch(e){ alert('Could not connect to the server. Is it running on this port?'); return; }
+  listening=true;
+  $('btnStart').classList.add('on'); $('btnStart').textContent='● Listening';
+  $('btnStop').disabled=false;
+  if(CONFIG.stt==='sarvam'){ await startMic(); }
+  else { startRecog(); }
+  setPill('listening');
+}
+
+function stopTalking(){
+  listening=false;
+  $('btnStart').classList.remove('on'); $('btnStart').textContent='● Start talking';
+  $('btnStop').disabled=true;
+  stopMic(); stopRecog();
+  if(currentAudio){ try{currentAudio.pause();}catch(e){} }
+  wsSend({type:'control',action:'stop'});
+  setPill('idle');
+}
+
+function restart(){
+  // clear the visible conversation + boards for a fresh demo (DB rows are kept)
+  $('convo').querySelectorAll('.msg,.typing').forEach(n=>n.remove());
+  const e=$('convoEmpty'); if(e) e.style.display='';
+  $('bookings').querySelectorAll('.bk').forEach(n=>n.remove());
+  $('complaints').querySelectorAll('.bk').forEach(n=>n.remove());
+  $('bkEmpty').style.display=''; $('cpEmpty').style.display='';
+  $('bkcount').textContent='0'; $('cpcount').textContent='0';
+  switchTab('bookings');
+  wsSend({type:'control',action:'restart'});
+}
+
+function sendTyped(){
+  const v=$('typebox').value.trim();
+  if(!v) return;
+  $('typebox').value='';
+  if(!ws || ws.readyState!==1){
+    connectWS().then(()=>{ waitingForServer=true; wsSend({type:'turn_text',text:v}); });
+  }else{
+    waitingForServer=true; wsSend({type:'turn_text',text:v});
+  }
+}
+
+// ── Mic capture (Sarvam path): AudioWorklet + energy VAD + WAV encode ─────────
+let capturing=false, speechFrames=[], preRoll=[], silentSamples=0, speechSamples=0, srate=48000;
+const PREROLL_MS=300, SILENCE_END_MS=700, MIN_SPEECH_MS=350, MAX_TURN_MS=15000;
+
+async function startMic(){
+  try{
+    micStream = await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
+  }catch(e){ alert('Microphone permission is needed. You can still type to the agent.'); listening=false; $('btnStart').classList.remove('on'); $('btnStart').textContent='● Start talking'; $('btnStop').disabled=true; return; }
+  audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  srate = audioCtx.sampleRate;
+  await audioCtx.audioWorklet.addModule('/static/pcm-worklet.js');
+  sourceNode = audioCtx.createMediaStreamSource(micStream);
+  workletNode = new AudioWorkletNode(audioCtx,'pcm-processor');
+  workletNode.port.onmessage = e => onPcm(e.data);
+  sourceNode.connect(workletNode);
+  workletNode.connect(audioCtx.destination); // node outputs silence; keeps graph pulling
+  capturing=false; speechFrames=[]; preRoll=[]; silentSamples=0; speechSamples=0;
+}
+function stopMic(){
+  try{ if(workletNode){workletNode.port.onmessage=null; workletNode.disconnect();} }catch(e){}
+  try{ if(sourceNode) sourceNode.disconnect(); }catch(e){}
+  try{ if(micStream) micStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  try{ if(audioCtx) audioCtx.close(); }catch(e){}
+  workletNode=sourceNode=micStream=audioCtx=null; capturing=false; speechFrames=[];
+}
+function armed(){ return listening && !waitingForServer && !playing; }
+
+function onPcm(chunk){
+  if(!armed()){ return; }
+  const n=chunk.length;
+  let sum=0; for(let i=0;i<n;i++){ const s=chunk[i]; sum+=s*s; }
+  const rms=Math.sqrt(sum/n);
+  const startT=parseFloat($('sens').value);
+  const silT=startT*0.6;
+  const preMax=srate*PREROLL_MS/1000;
+
+  if(!capturing){
+    preRoll.push(chunk);
+    let total=preRoll.reduce((a,c)=>a+c.length,0);
+    while(total>preMax && preRoll.length>1){ total-=preRoll.shift().length; }
+    if(rms>startT){
+      capturing=true; speechFrames=preRoll.slice(); preRoll=[];
+      speechSamples=speechFrames.reduce((a,c)=>a+c.length,0); silentSamples=0;
+    }
+  }else{
+    speechFrames.push(chunk); speechSamples+=n;
+    if(rms<silT) silentSamples+=n; else silentSamples=0;
+    const silenceEnd=srate*SILENCE_END_MS/1000, maxS=srate*MAX_TURN_MS/1000;
+    if(silentSamples>=silenceEnd || speechSamples>=maxS){ endTurn(); }
+  }
+}
+function endTurn(){
+  capturing=false;
+  const frames=speechFrames; speechFrames=[];
+  const durMs = frames.reduce((a,c)=>a+c.length,0)/srate*1000;
+  silentSamples=0; speechSamples=0;
+  if(durMs<MIN_SPEECH_MS) return;            // ignore coughs/clicks
+  let len=0; frames.forEach(f=>len+=f.length);
+  const all=new Float32Array(len); let o=0; frames.forEach(f=>{all.set(f,o);o+=f.length;});
+  const ds=downsample(all, srate, 16000);
+  const wav=encodeWAV(floatTo16(ds), 16000);
+  waitingForServer=true;
+  setPill('transcribing');
+  if(ws&&ws.readyState===1){
+    ws.send(JSON.stringify({type:'turn_meta',format:'wav',sample_rate:16000,duration_ms:Math.round(durMs)}));
+    ws.send(wav);
+  }
+}
+function rearm(){ if(listening && CONFIG.stt==='sarvam' && audioCtx) setPill('listening');
+                 if(listening && CONFIG.stt!=='sarvam' && !playing && !waitingForServer) startRecog(); }
+
+function downsample(buf, inRate, outRate){
+  if(outRate>=inRate) return buf;
+  const ratio=inRate/outRate, newLen=Math.round(buf.length/ratio), out=new Float32Array(newLen);
+  let oi=0, ii=0;
+  while(oi<newLen){
+    const nextI=Math.round((oi+1)*ratio); let sum=0,cnt=0;
+    for(let i=ii;i<nextI&&i<buf.length;i++){sum+=buf[i];cnt++;}
+    out[oi]=cnt?sum/cnt:0; oi++; ii=nextI;
+  }
+  return out;
+}
+function floatTo16(f32){
+  const out=new Int16Array(f32.length);
+  for(let i=0;i<f32.length;i++){ let s=Math.max(-1,Math.min(1,f32[i])); out[i]= s<0 ? s*0x8000 : s*0x7FFF; }
+  return out;
+}
+function encodeWAV(samples, sr){
+  const buf=new ArrayBuffer(44+samples.length*2), view=new DataView(buf);
+  const w=(o,s)=>{ for(let i=0;i<s.length;i++) view.setUint8(o+i,s.charCodeAt(i)); };
+  w(0,'RIFF'); view.setUint32(4,36+samples.length*2,true); w(8,'WAVE');
+  w(12,'fmt '); view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
+  view.setUint32(24,sr,true); view.setUint32(28,sr*2,true); view.setUint16(32,2,true); view.setUint16(34,16,true);
+  w(36,'data'); view.setUint32(40,samples.length*2,true);
+  let off=44; for(let i=0;i<samples.length;i++){ view.setInt16(off,samples[i],true); off+=2; }
+  return buf;
+}
+
+// ── Web Speech fallback (no Sarvam key) ──────────────────────────────────────
+let recogWarned=false;
+function startRecog(){
+  const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ if(!recogWarned){ alert('This browser has no Telugu speech recognition. Please add a Sarvam key, or type to the agent.'); recogWarned=true;} return; }
+  if(recog){ try{recog.start();}catch(e){} return; }
+  recog=new SR(); recog.lang='te-IN'; recog.continuous=false; recog.interimResults=false;
+  recog.onresult=e=>{
+    const t=e.results[0][0].transcript;
+    waitingForServer=true; setPill('transcribing'); wsSend({type:'turn_text',text:t});
+  };
+  recog.onend=()=>{ if(listening && !waitingForServer && !playing) { try{recog.start();}catch(e){} } };
+  try{ recog.start(); }catch(e){}
+}
+function stopRecog(){ if(recog){ try{recog.onend=null; recog.stop();}catch(e){} recog=null; } }
+
+// ── Playback (gates the mic so the agent never hears itself) ──────────────────
+function playAudio(blob){
+  playing=true; setPill('speaking');
+  const url=URL.createObjectURL(blob); const a=new Audio(url); currentAudio=a;
+  const done=()=>{ playing=false; try{URL.revokeObjectURL(url);}catch(e){} afterPlay(); };
+  a.onended=done; a.onerror=done;
+  a.play().catch(done);
+}
+function afterPlay(){
+  if(listening){ setPill('listening'); rearm(); }
+  else setPill('idle');
+}
+</script>
+</body>
+</html>
