@@ -5,6 +5,8 @@ phone-style clips. If the configured model/endpoint is rejected, it retries once
 Saarika (plain te-IN transcription) so a key change in Sarvam's API doesn't break the demo.
 The browser sends a 16 kHz mono WAV; we POST it as multipart/form-data.
 """
+from __future__ import annotations
+
 import os
 import httpx
 

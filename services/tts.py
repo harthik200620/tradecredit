@@ -9,6 +9,8 @@ synthesize(text) -> (audio_bytes | None, mime | None)
   ElevenLabs -> mp3  (audio/mpeg)
   Sarvam     -> wav  (audio/wav)   both play natively in the browser.
 """
+from __future__ import annotations
+
 import os
 import base64
 import httpx
@@ -129,6 +131,10 @@ async def synthesize(text: str) -> tuple[bytes | None, str | None]:
     text = (text or "").strip()
     if not text or TTS_PROVIDER == "none":
         return None, None
+
+    # Lazy probe (serverless cold start may not have run the startup hook).
+    if _eleven_ok is None:
+        await probe_elevenlabs()
 
     # Preferred: ElevenLabs (if probe said it's usable)
     if TTS_PROVIDER == "elevenlabs" and _eleven_ok:

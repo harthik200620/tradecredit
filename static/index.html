@@ -184,6 +184,9 @@ let audioCtx = null, micStream = null, workletNode = null, sourceNode = null;
 let recog = null;                 // Web Speech fallback
 let pendingAudioMime = null, currentAudio = null;
 let typingEl = null;
+let httpMode = false, httpHistory = [];   // HTTP fallback when WebSocket is unavailable (e.g. Vercel)
+let noReplyTimer = null, noReplyCount = 0, endingCall = false;
+const NO_REPLY_MS = 6000;   // wait this long for the caller to speak before re-prompting / closing
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 init();
@@ -207,8 +210,9 @@ function renderCfg(){
   let extra = '';
   if(c.tts !== 'elevenlabs' && c.voice_detail && c.voice_detail!=='ok')
      extra = `<span class="bad">· ${c.voice_detail}</span>`;
+  const brainTxt = c.model ? c.model : 'Gemini 2.5 Flash';
   $('cfgbar').innerHTML =
-    `<span>Brain: <b class="${llmCls}">Gemini 2.5 Flash${c.llm_ok?'':' — NO KEY'}</b></span>`+
+    `<span>Brain: <b class="${llmCls}">${brainTxt}${c.llm_ok?'':' — NO KEY'}</b></span>`+
     `<span>Ears: <b>${sttTxt}</b></span>`+
     `<span>Voice: <b>${voiceTxt}</b> ${extra}</span>`;
   if(c.stt!=='sarvam') $('langmeta').textContent = 'Telugu (browser STT)';
@@ -306,16 +310,93 @@ function setPill(state){
 // ── WebSocket ────────────────────────────────────────────────────────────────
 function connectWS(){
   return new Promise((resolve,reject)=>{
-    const proto = location.protocol==='https:'?'wss':'ws';
-    ws = new WebSocket(`${proto}://${location.host}/ws`);
+    try{
+      const proto = location.protocol==='https:'?'wss':'ws';
+      ws = new WebSocket(`${proto}://${location.host}/ws`);
+    }catch(e){ return reject(e); }
     ws.binaryType='arraybuffer';
-    ws.onopen=()=>{ ws.send(JSON.stringify({type:'hello'})); resolve(); };
-    ws.onerror=(e)=>reject(e);
+    const to=setTimeout(()=>reject(new Error('ws timeout')), 3500);
+    ws.onopen=()=>{ clearTimeout(to); ws.send(JSON.stringify({type:'hello'})); resolve(); };
+    ws.onerror=(e)=>{ clearTimeout(to); reject(e); };
     ws.onclose=()=>{ };
     ws.onmessage=onWsMessage;
   });
 }
 function wsSend(obj){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(obj)); }
+
+// Try a WebSocket once; if it can't connect, switch to HTTP (/api/turn) mode for good.
+async function ensureWS(){
+  if(httpMode) return false;
+  if(ws && ws.readyState===1) return true;
+  try{ await connectWS(); return true; }
+  catch(e){ httpMode=true; return false; }
+}
+function b64toBlob(b64, mime){
+  const bin=atob(b64), u8=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+  return new Blob([u8], {type:mime||'audio/mpeg'});
+}
+
+// ── Professional call handling: re-ask if the caller goes quiet, then close + end ──
+function clearNoReply(){ if(noReplyTimer){ clearTimeout(noReplyTimer); noReplyTimer=null; } }
+function armNoReply(){
+  clearNoReply();
+  if(!listening || endingCall) return;
+  noReplyTimer=setTimeout(handleNoReply, NO_REPLY_MS);
+}
+function handleNoReply(){
+  noReplyTimer=null;
+  if(!listening || endingCall) return;
+  if(waitingForServer || playing){ armNoReply(); return; }   // busy — check again shortly
+  noReplyCount++;
+  if(noReplyCount>=2){
+    endingCall=true;
+    sendSignal('(System: the customer has not responded again. Politely CLOSE the call now in Telugu — say you will send the details on WhatsApp and ask them to please send their query there, then a short goodbye.)');
+  }else{
+    sendSignal('(System: the customer has not responded for a few seconds. Gently re-ask your last question ONCE, in Telugu.)');
+  }
+}
+function sendSignal(text){
+  if(httpMode){ postTurn({text, silent:true}); }
+  else { waitingForServer=true; wsSend({type:'turn_text', text, silent:true}); }
+}
+function sysNote(t){
+  clearEmpty();
+  const d=document.createElement('div'); d.className='empty'; d.style.margin='8px auto'; d.textContent=t;
+  $('convo').appendChild(d); $('convo').scrollTop=$('convo').scrollHeight;
+}
+function endCall(){
+  endingCall=false; noReplyCount=0; clearNoReply();
+  if(listening){
+    listening=false; stopMic(); stopRecog();
+    $('btnStart').classList.remove('on'); $('btnStart').textContent='● Start talking';
+    $('btnStop').disabled=true;
+  }
+  setPill('idle');
+  sysNote('📞 Call ended — press Start to talk again.');
+}
+// One turn over HTTP — stateless, so the client carries the conversation history.
+async function postTurn(opts){
+  clearNoReply();
+  showTyping(); setPill('thinking'); waitingForServer=true;
+  const fd=new FormData();
+  if(opts.text) fd.append('text', opts.text);
+  if(opts.wav)  fd.append('audio', new Blob([opts.wav],{type:'audio/wav'}), 'turn.wav');
+  fd.append('history', JSON.stringify(httpHistory));
+  let d;
+  try{ d=await (await fetch('/api/turn',{method:'POST',body:fd})).json(); }
+  catch(e){ hideTyping(); bubble('⚠ network error','assistant'); waitingForServer=false; afterPlay(); return; }
+  hideTyping();
+  if(d.transcript && !opts.silent) bubble(d.transcript,'user');
+  if(d.error) bubble('⚠ '+d.error,'assistant');
+  if(d.reply) bubble(d.reply,'assistant');
+  if(d.booking){ addBookingCard(d.booking); switchTab('bookings'); endingCall=true; }
+  if(d.complaint){ addComplaintCard(d.complaint); switchTab('complaints'); endingCall=true; }
+  if(Array.isArray(d.history)) httpHistory=d.history;
+  waitingForServer=false;
+  if(d.audio_b64){ playAudio(b64toBlob(d.audio_b64, d.audio_mime)); }
+  else afterPlay();
+}
 
 function onWsMessage(ev){
   if(typeof ev.data !== 'string'){           // binary = TTS audio
@@ -329,11 +410,15 @@ function onWsMessage(ev){
     case 'transcript': hideTyping(); bubble(m.text,'user'); break;
     case 'assistant_text': hideTyping(); bubble(m.text,'assistant'); break;
     case 'tts_audio_meta': pendingAudioMime=m.mime; break;
-    case 'booking_created': addBookingCard(m.booking); switchTab('bookings'); break;
-    case 'complaint_created': addComplaintCard(m.complaint); switchTab('complaints'); break;
+    case 'booking_created': addBookingCard(m.booking); switchTab('bookings'); endingCall=true; break;
+    case 'complaint_created': addComplaintCard(m.complaint); switchTab('complaints'); endingCall=true; break;
     case 'status':
       if(m.state==='thinking') showTyping();
-      if(m.state==='idle'){ hideTyping(); waitingForServer=false; rearm(); }
+      if(m.state==='idle'){
+        hideTyping(); waitingForServer=false;
+        if(endingCall && !playing){ endCall(); }
+        else { rearm(); if(listening) armNoReply(); }
+      }
       setPill(m.state==='idle' ? (listening?'listening':'idle') : m.state);
       break;
     case 'error':
@@ -359,9 +444,8 @@ $('sens').addEventListener('input',e=>{
 
 async function startTalking(){
   if(listening) return;
-  try{
-    if(!ws || ws.readyState!==1) await connectWS();
-  }catch(e){ alert('Could not connect to the server. Is it running on this port?'); return; }
+  endingCall=false; noReplyCount=0; clearNoReply();
+  await ensureWS();   // falls back to HTTP mode if the WebSocket can't connect (e.g. on Vercel)
   listening=true;
   $('btnStart').classList.add('on'); $('btnStart').textContent='● Listening';
   $('btnStop').disabled=false;
@@ -372,6 +456,7 @@ async function startTalking(){
 
 function stopTalking(){
   listening=false;
+  clearNoReply(); noReplyCount=0; endingCall=false;
   $('btnStart').classList.remove('on'); $('btnStart').textContent='● Start talking';
   $('btnStop').disabled=true;
   stopMic(); stopRecog();
@@ -381,6 +466,7 @@ function stopTalking(){
 }
 
 function restart(){
+  clearNoReply(); noReplyCount=0; endingCall=false;
   // clear the visible conversation + boards for a fresh demo (DB rows are kept)
   $('convo').querySelectorAll('.msg,.typing').forEach(n=>n.remove());
   const e=$('convoEmpty'); if(e) e.style.display='';
@@ -392,15 +478,14 @@ function restart(){
   wsSend({type:'control',action:'restart'});
 }
 
-function sendTyped(){
+async function sendTyped(){
   const v=$('typebox').value.trim();
   if(!v) return;
   $('typebox').value='';
-  if(!ws || ws.readyState!==1){
-    connectWS().then(()=>{ waitingForServer=true; wsSend({type:'turn_text',text:v}); });
-  }else{
-    waitingForServer=true; wsSend({type:'turn_text',text:v});
-  }
+  clearNoReply(); noReplyCount=0; endingCall=false;
+  await ensureWS();
+  if(httpMode){ postTurn({text:v}); }
+  else { waitingForServer=true; wsSend({type:'turn_text',text:v}); }
 }
 
 // ── Mic capture (Sarvam path): AudioWorklet + energy VAD + WAV encode ─────────
@@ -456,6 +541,7 @@ function onPcm(chunk){
 }
 function endTurn(){
   capturing=false;
+  clearNoReply(); noReplyCount=0;
   const frames=speechFrames; speechFrames=[];
   const durMs = frames.reduce((a,c)=>a+c.length,0)/srate*1000;
   silentSamples=0; speechSamples=0;
@@ -466,6 +552,7 @@ function endTurn(){
   const wav=encodeWAV(floatTo16(ds), 16000);
   waitingForServer=true;
   setPill('transcribing');
+  if(httpMode){ postTurn({wav: wav}); return; }
   if(ws&&ws.readyState===1){
     ws.send(JSON.stringify({type:'turn_meta',format:'wav',sample_rate:16000,duration_ms:Math.round(durMs)}));
     ws.send(wav);
@@ -510,6 +597,8 @@ function startRecog(){
   recog=new SR(); recog.lang='te-IN'; recog.continuous=false; recog.interimResults=false;
   recog.onresult=e=>{
     const t=e.results[0][0].transcript;
+    clearNoReply(); noReplyCount=0;
+    if(httpMode){ postTurn({text:t}); return; }
     waitingForServer=true; setPill('transcribing'); wsSend({type:'turn_text',text:t});
   };
   recog.onend=()=>{ if(listening && !waitingForServer && !playing) { try{recog.start();}catch(e){} } };
@@ -526,7 +615,8 @@ function playAudio(blob){
   a.play().catch(done);
 }
 function afterPlay(){
-  if(listening){ setPill('listening'); rearm(); }
+  if(endingCall){ endCall(); return; }
+  if(listening){ setPill('listening'); rearm(); armNoReply(); }
   else setPill('idle');
 }
 </script>

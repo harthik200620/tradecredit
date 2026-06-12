@@ -8,6 +8,9 @@ FastAPI app:
 
 Run:  python -m uvicorn main:app --reload --port 8000   ->  http://localhost:8000
 """
+from __future__ import annotations
+
+import base64
 import json
 import uuid
 from contextlib import asynccontextmanager
@@ -17,7 +20,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Form, File, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -52,6 +55,7 @@ async def config():
         "tts": tts.active_provider(),
         "voice_ok": tts.eleven_ok(),
         "voice_detail": tts.eleven_reason(),
+        "model": llm.GEMINI_MODEL,
     }
 
 
@@ -65,18 +69,81 @@ async def complaints():
     return {"complaints": db.recent_complaints()}
 
 
+@app.post("/api/turn")
+async def api_turn(
+    text: str = Form(default=""),
+    history: str = Form(default="[]"),
+    audio: UploadFile = File(default=None),
+):
+    """Stateless turn for HTTP/serverless clients (Vercel has no WebSocket).
+    The client carries the conversation history and sends it back each turn."""
+    try:
+        contents = json.loads(history) if history else []
+    except Exception:
+        contents = []
+
+    user_text = (text or "").strip()
+    transcript = user_text
+    if audio is not None:
+        wav = await audio.read()
+        try:
+            transcript = await stt.transcribe_wav(wav)
+        except Exception as e:
+            return {"error": f"stt: {e}", "history": contents}
+        user_text = transcript
+    if not user_text:
+        return {"error": "no input", "history": contents}
+
+    captured = {"booking": None, "complaint": None}
+
+    async def on_booking(args):
+        captured["booking"] = db.insert_booking(args)
+        return captured["booking"]
+
+    async def on_complaint(args):
+        captured["complaint"] = db.insert_complaint(args)
+        return captured["complaint"]
+
+    try:
+        reply = await llm.gemini_turn(
+            contents, user_text,
+            {"create_booking": on_booking, "log_complaint": on_complaint},
+        )
+    except Exception as e:
+        return {"error": f"llm: {e}", "transcript": transcript, "history": contents}
+
+    audio_b64, mime = None, None
+    try:
+        a, m = await tts.synthesize(reply)
+        if a:
+            audio_b64, mime = base64.b64encode(a).decode("ascii"), m
+    except Exception:
+        pass
+
+    return {
+        "transcript": transcript,
+        "reply": reply,
+        "booking": captured["booking"],
+        "complaint": captured["complaint"],
+        "history": contents,
+        "audio_b64": audio_b64,
+        "audio_mime": mime,
+    }
+
+
 async def _send(ws: WebSocket, obj: dict):
     await ws.send_text(json.dumps(obj, ensure_ascii=False))
 
 
-async def _process_text(ws: WebSocket, state: dict, text: str):
-    """One full customer turn from a transcript/typed text."""
+async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = False):
+    """One full customer turn. `silent` hides the user echo (internal no-reply nudges)."""
     text = (text or "").strip()
     if not text:
         await _send(ws, {"type": "status", "state": "idle"})
         return
     sid = state["session_id"]
-    await _send(ws, {"type": "transcript", "role": "user", "text": text})
+    if not silent:
+        await _send(ws, {"type": "transcript", "role": "user", "text": text})
     db.log_turn(sid, "user", text)
 
     await _send(ws, {"type": "status", "state": "thinking"})
@@ -157,7 +224,9 @@ async def ws_endpoint(ws: WebSocket):
                 # client may carry its own session id; keep the server one authoritative
                 await _send(ws, {"type": "status", "state": "idle", "detail": "connected"})
             elif mtype == "turn_text":
-                await _process_text(ws, state, data.get("text", ""))
+                await _process_text(
+                    ws, state, data.get("text", ""), silent=bool(data.get("silent"))
+                )
             elif mtype == "control":
                 action = data.get("action")
                 if action == "restart":

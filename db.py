@@ -3,11 +3,16 @@
 Stdlib sqlite3 only. One shared connection guarded by a lock so it's safe under
 FastAPI's async loop and uvicorn --reload on Windows.
 """
+from __future__ import annotations
+
+import os
 import sqlite3
 import threading
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent / "app.db"
+# On Vercel the project filesystem is read-only except /tmp (ephemeral per instance).
+_DB_BASE = Path("/tmp") if os.getenv("VERCEL") else Path(__file__).parent
+DB_PATH = _DB_BASE / "app.db"
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
 
@@ -59,10 +64,13 @@ def _connect() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    with _lock:
-        conn = _connect()
-        conn.executescript(SCHEMA)
-        conn.commit()
+    try:
+        with _lock:
+            conn = _connect()
+            conn.executescript(SCHEMA)
+            conn.commit()
+    except Exception:
+        pass
 
 
 def ensure_conversation(session_id: str) -> None:
@@ -141,3 +149,7 @@ def recent_complaints(limit: int = 50) -> list[dict]:
             "SELECT * FROM complaints ORDER BY id DESC LIMIT ?", (limit,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+# Ensure tables exist at import time too — Vercel serverless may not run the ASGI lifespan.
+init_db()

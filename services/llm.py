@@ -5,6 +5,8 @@ if the model invokes a tool (create_booking / log_complaint) it runs the matchin
 (which writes to the DB and pushes the row to the page), feeds the result back to Gemini, and
 returns the model's spoken reply. `contents` is mutated in place to persist history.
 """
+from __future__ import annotations
+
 import os
 from datetime import datetime
 
@@ -122,6 +124,13 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict) -> str:
             )
             continue  # loop again to get the spoken reply
 
-        return "".join(text_chunks).strip()
+        final = "".join(text_chunks).strip()
+        if not final:
+            final = (
+                _FALLBACK_CONFIRM.get(last_tool)
+                if last_tool
+                else "క్షమించండి అండి, మీరు చెప్పింది ఒక్కసారి మళ్ళీ చెప్తారా?"
+            )
+        return final
 
     return "క్షమించండి అండి, ఒక్కసారి మళ్ళీ చెప్తారా?"
