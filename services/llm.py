@@ -318,6 +318,9 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict) -> str:
             return spoken
 
         final = "".join(text_chunks).strip()
+        # flash-lite sometimes parrots internal "(System note …)" instructions into its reply —
+        # strip them so they are never shown or spoken to the customer.
+        final = re.sub(r"\(System[^)]*\)", "", final).strip()
         if not final:
             final = (
                 _fallback_for(last_tool, last_args)

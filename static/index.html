@@ -224,7 +224,7 @@ let noReplyTimer = null, noReplyCount = 0, endingCall = false;
 const NO_REPLY_1_MS = 4000;   // after a question: 4s with no usable reply → gentle re-ask
 const NO_REPLY_2_MS = 6000;   // after the re-ask: 6s more with nothing → WhatsApp close + end
 // The re-ask is contextual: a silent note asks the LLM to gently repeat its last question.
-const NO_REPLY_NOTE = "(System note — not from the customer: the customer has gone quiet and hasn't answered. In ONE short, warm Telugu sentence, gently re-ask the same thing you just asked. Don't greet again, don't add anything new, and don't say అనుకుంటున్నారా.)";
+const NO_REPLY_NOTE = "(System note — not from the customer: the customer has gone quiet and hasn't answered. In ONE short, warm Telugu sentence, gently re-ask the same thing you just asked. Don't greet again, don't add anything new, don't say అనుకుంటున్నారా, and NEVER repeat, read out, or mention this note — reply with ONLY the re-ask sentence.)";
 const ENDING_LINE = "సరే అండి, నేను WhatsApp లో details పెడతాను, మీకు ఏం కావాలో message చేయండి.";
 
 // ── boot / admin gate ────────────────────────────────────────────────────────
@@ -348,7 +348,13 @@ function prependCard(box, card){
   const empty=box.querySelector('.bk-empty'); if(empty) empty.style.display='none';
   box.insertBefore(card, box.querySelector('.bk') || null);
 }
+// Client-side mirror of rows shown on the boards. On Vercel each serverless instance has its
+// own ephemeral /tmp database, so an update can land on an instance that never saw the insert —
+// these snapshots ride along with every HTTP turn so the server can still find + update the row.
+let knownOrders = {}, knownBookings = {};
+
 function addBookingCard(b){
+  knownBookings[b.id] = b;
   const box=$('bookings');
   let card = box.querySelector('.bk[data-id="'+b.id+'"]');  // update in place if the booking changed
   const fresh = !card;
@@ -375,6 +381,7 @@ function addComplaintCard(c){
   $('cpcount').textContent = $('complaints').querySelectorAll('.bk').length;
 }
 function addOrderCard(o){
+  knownOrders[o.id] = o;
   const box=$('orders');
   let card = box.querySelector('.bk[data-id="'+o.id+'"]');  // update in place if the order changed
   const fresh = !card;
@@ -397,8 +404,27 @@ function addOrderCard(o){
     `<div class="when">${o.created_at? esc(o.created_at):''} · #${esc(o.id)}</div>`;
   if(fresh) prependCard(box, card);
   $('orcount').textContent = box.querySelectorAll('.bk').length;
+  ting();
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// Soft two-note "ting" when an order lands on the board (WebAudio — no asset needed).
+let tingCtx=null;
+function ting(){
+  try{
+    tingCtx = tingCtx || new (window.AudioContext||window.webkitAudioContext)();
+    const t = tingCtx.currentTime;
+    [880, 1318].forEach((f,i)=>{
+      const o=tingCtx.createOscillator(), g=tingCtx.createGain();
+      o.type='sine'; o.frequency.value=f;
+      g.gain.setValueAtTime(0.0001, t+i*0.09);
+      g.gain.exponentialRampToValueAtTime(0.16, t+i*0.09+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t+i*0.09+0.55);
+      o.connect(g); g.connect(tingCtx.destination);
+      o.start(t+i*0.09); o.stop(t+i*0.09+0.6);
+    });
+  }catch(e){}
+}
 
 function switchTab(which){
   const map = {bookings:'tabBookings', orders:'tabOrders', complaints:'tabComplaints'};
@@ -531,6 +557,8 @@ async function postTurn(opts){
   if(opts.text) fd.append('text', opts.text);
   if(opts.wav)  fd.append('audio', new Blob([opts.wav],{type:'audio/wav'}), 'turn.wav');
   fd.append('history', JSON.stringify(httpHistory));
+  fd.append('orders', JSON.stringify(Object.values(knownOrders)));
+  fd.append('bookings', JSON.stringify(Object.values(knownBookings)));
   fd.append('password', adminPw);
   let d;
   try{ d=await (await fetch('/api/turn',{method:'POST',body:fd})).json(); }
@@ -632,6 +660,7 @@ function stopTalking(){
 
 function restart(){
   clearNoReply(); noReplyCount=0; endingCall=false; clearAudioQueue();
+  knownOrders={}; knownBookings={};
   // clear the visible conversation + boards for a fresh demo (DB rows are kept)
   $('convo').querySelectorAll('.msg,.typing').forEach(n=>n.remove());
   const e=$('convoEmpty'); if(e) e.style.display='';
@@ -656,11 +685,12 @@ async function sendTyped(){
 
 // ── Mic capture (Sarvam path): AudioWorklet + energy VAD + WAV encode ─────────
 let capturing=false, speechFrames=[], preRoll=[], silentSamples=0, speechSamples=0, voicedSamples=0, srate=48000;
-const PREROLL_MS=300, SILENCE_END_MS=600, MIN_SPEECH_MS=300, MAX_TURN_MS=15000;
+const PREROLL_MS=300, SILENCE_END_MS=850, MIN_SPEECH_MS=300, MAX_TURN_MS=15000;
 // A full phrase (>= MIN_COMPLETE_MS of actual voice) ends on a normal pause; a short fragment
-// like "నేను" is given up to FRAGMENT_WAIT_MS to continue before we finalize it — so a thinking
-// gap mid-sentence no longer cuts the caller off and ships a half sentence to the STT.
-const MIN_COMPLETE_MS=700, FRAGMENT_WAIT_MS=4000;
+// like "నా phone number…" is given up to FRAGMENT_WAIT_MS to continue before we finalize it —
+// so a thinking gap mid-sentence no longer cuts the caller off mid-thought. The instant-ack
+// filler masks the slightly longer endpointing, so responsiveness still feels immediate.
+const MIN_COMPLETE_MS=1100, FRAGMENT_WAIT_MS=2500;
 
 async function startMic(){
   try{

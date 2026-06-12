@@ -241,6 +241,62 @@ def recent_orders(limit: int = 50) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def upsert_order(o: dict) -> dict:
+    """Write an order row PRESERVING its id — used when a client-carried snapshot is the source
+    of truth (Vercel instances each have their own ephemeral /tmp DB)."""
+    with _lock:
+        conn = _connect()
+        conn.execute(
+            "INSERT OR REPLACE INTO orders (id, name, phone, items, order_type, payment, total, "
+            "notes, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,COALESCE(?, datetime('now','localtime')))",
+            (
+                int(o.get("id") or 0) or None,
+                str(o.get("name", "")).strip(),
+                str(o.get("phone", "")).strip(),
+                str(o.get("items", "")).strip(),
+                str(o.get("order_type", "") or "").strip().lower(),
+                str(o.get("payment", "") or "").strip().lower(),
+                int(o.get("total") or 0),
+                str(o.get("notes", "") or "").strip(),
+                str(o.get("status", "changed")).strip(),
+                o.get("created_at"),
+            ),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM orders WHERE phone=? ORDER BY id DESC LIMIT 1",
+            (str(o.get("phone", "")).strip(),),
+        ).fetchone()
+        return dict(row)
+
+
+def upsert_booking(b: dict) -> dict:
+    """Booking twin of upsert_order — preserves the id from a client-carried snapshot."""
+    with _lock:
+        conn = _connect()
+        conn.execute(
+            "INSERT OR REPLACE INTO bookings (id, name, phone, party_size, date, time, notes, "
+            "status, created_at) VALUES (?,?,?,?,?,?,?,?,COALESCE(?, datetime('now','localtime')))",
+            (
+                int(b.get("id") or 0) or None,
+                str(b.get("name", "")).strip(),
+                str(b.get("phone", "")).strip(),
+                int(b.get("party_size") or 0),
+                str(b.get("date", "")).strip(),
+                str(b.get("time", "")).strip(),
+                str(b.get("notes", "") or "").strip(),
+                str(b.get("status", "changed")).strip(),
+                b.get("created_at"),
+            ),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM bookings WHERE phone=? ORDER BY id DESC LIMIT 1",
+            (str(b.get("phone", "")).strip(),),
+        ).fetchone()
+        return dict(row)
+
+
 def update_latest_order(
     phone: str,
     items: str | None = None,

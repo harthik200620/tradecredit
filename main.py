@@ -29,6 +29,7 @@ from fastapi.staticfiles import StaticFiles
 
 import db
 from services import stt, tts, llm
+from services.prompts import order_total
 
 STATIC_DIR = Path(__file__).parent / "static"
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "sahayak@ai")
@@ -135,21 +136,43 @@ async def api_say(text: str = Form(default=""), password: str = Form(default="")
     return {"audio_b64": audio_b64, "audio_mime": mime}
 
 
+def _latest_for_phone(snapshot: list, phone: str) -> dict | None:
+    """Newest snapshot row whose phone matches — compared on the LAST 10 digits so
+    '+91 98765 43210' and '9876543210' are the same caller."""
+    digits = re.sub(r"\D", "", str(phone or ""))[-10:]
+    if not digits:
+        return None
+    matches = [r for r in snapshot if isinstance(r, dict)
+               and re.sub(r"\D", "", str(r.get("phone", "")))[-10:] == digits]
+    return max(matches, key=lambda r: r.get("id") or 0) if matches else None
+
+
 @app.post("/api/turn")
 async def api_turn(
     text: str = Form(default=""),
     history: str = Form(default="[]"),
+    orders: str = Form(default="[]"),
+    bookings: str = Form(default="[]"),
     password: str = Form(default=""),
     audio: UploadFile = File(default=None),
 ):
     """Stateless turn for HTTP/serverless clients (Vercel has no WebSocket).
-    The client carries the conversation history and sends it back each turn."""
+    The client carries the conversation history — and a snapshot of the orders/bookings it has
+    seen, so updates still work when another serverless instance (fresh /tmp DB) gets the turn."""
     if password != ADMIN_PASSWORD:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     try:
         contents = json.loads(history) if history else []
     except Exception:
         contents = []
+    try:
+        client_orders = json.loads(orders) if orders else []
+    except Exception:
+        client_orders = []
+    try:
+        client_bookings = json.loads(bookings) if bookings else []
+    except Exception:
+        client_bookings = []
 
     user_text = (text or "").strip()
     transcript = user_text
@@ -174,6 +197,15 @@ async def api_turn(
             args.get("phone", ""), args.get("party_size"), args.get("date"),
             args.get("time"), args.get("name"), args.get("notes"),
         )
+        if row is None:  # this instance never saw the booking — recover from the client snapshot
+            base = _latest_for_phone(client_bookings, args.get("phone", ""))
+            if base:
+                merged = {**base}
+                for k in ("party_size", "date", "time", "name", "notes"):
+                    if args.get(k):
+                        merged[k] = args[k]
+                merged["status"] = "changed"
+                row = db.upsert_booking(merged)
         if row:
             captured["booking"] = row
         return row
@@ -191,6 +223,17 @@ async def api_turn(
             args.get("phone", ""), args.get("items"), args.get("notes"),
             args.get("order_type"), args.get("payment"),
         )
+        if row is None:  # this instance never saw the order — recover from the client snapshot
+            base = _latest_for_phone(client_orders, args.get("phone", ""))
+            if base:
+                merged = {**base}
+                for k in ("items", "order_type", "payment", "notes"):
+                    if args.get(k):
+                        merged[k] = args[k]
+                if args.get("items"):
+                    merged["total"] = order_total(args["items"])
+                merged["status"] = "changed"
+                row = db.upsert_order(merged)
         if row:
             captured["order"] = row
         return row
