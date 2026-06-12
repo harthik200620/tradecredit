@@ -32,7 +32,28 @@ def _clean(name: str, default: str = "") -> str:
 
 TTS_PROVIDER = _clean("TTS_PROVIDER", "elevenlabs").lower()
 
-ELEVEN_KEY = _clean("ELEVENLABS_API_KEY")
+
+def _load_eleven_keys() -> list[str]:
+    """ELEVENLABS_API_KEY + _2/_3 (or comma-separated ELEVENLABS_API_KEYS) for rotation —
+    free accounts get 10k credits/month, which heavy demo days exhaust. NOTE: the voice
+    (ELEVENLABS_VOICE_ID) must be added to EACH account's voice library."""
+    raw = []
+    combo = _clean("ELEVENLABS_API_KEYS")
+    if combo:
+        raw += [p.strip() for p in combo.split(",")]
+    for name in ("ELEVENLABS_API_KEY", "ELEVENLABS_API_KEY_2", "ELEVENLABS_API_KEY_3"):
+        raw.append(_clean(name))
+    out, seen = [], set()
+    for k in raw:
+        if k and k not in seen:
+            seen.add(k)
+            out.append(k)
+    return out
+
+
+_ELEVEN_KEYS = _load_eleven_keys()
+_eleven_key_idx = 0
+ELEVEN_KEY = _ELEVEN_KEYS[0] if _ELEVEN_KEYS else ""
 ELEVEN_VOICE = _clean("ELEVENLABS_VOICE_ID")
 ELEVEN_MODEL = _clean("ELEVENLABS_MODEL_ID", "eleven_v3")
 
@@ -102,8 +123,11 @@ async def probe_elevenlabs() -> None:
 
 
 async def _elevenlabs(text: str) -> tuple[bytes | None, str | None]:
+    """ElevenLabs TTS with key rotation. On quota/auth failure it advances to the next key;
+    when every key is exhausted it flips _eleven_ok off so later turns skip the wasted call
+    and go straight to Sarvam (no extra latency, and /config reports the truth)."""
+    global _eleven_key_idx, _eleven_ok, _eleven_reason
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_VOICE}"
-    headers = {"xi-api-key": ELEVEN_KEY, "Content-Type": "application/json"}
     params = {"output_format": "mp3_44100_128"}
     body = {
         "text": text,
@@ -115,9 +139,25 @@ async def _elevenlabs(text: str) -> tuple[bytes | None, str | None]:
             "use_speaker_boost": True,
         },
     }
-    resp = await _http.client().post(url, headers=headers, params=params, json=body)
-    resp.raise_for_status()
-    return resp.content, "audio/mpeg"
+    last_detail, quota_fail = "", False
+    for _ in range(max(1, len(_ELEVEN_KEYS))):
+        key = _ELEVEN_KEYS[_eleven_key_idx] if _ELEVEN_KEYS else ELEVEN_KEY
+        resp = await _http.client().post(
+            url, headers={"xi-api-key": key, "Content-Type": "application/json"},
+            params=params, json=body,
+        )
+        if resp.status_code < 400:
+            return resp.content, "audio/mpeg"
+        last_detail = resp.text[:200]
+        quota_fail = resp.status_code in (401, 429) or "quota_exceeded" in last_detail
+        if quota_fail and len(_ELEVEN_KEYS) > 1:
+            _eleven_key_idx = (_eleven_key_idx + 1) % len(_ELEVEN_KEYS)
+            continue
+        break
+    if quota_fail:
+        _eleven_ok = False
+        _eleven_reason = "ElevenLabs credits exhausted (all keys) — speaking with Sarvam fallback"
+    raise RuntimeError(f"ElevenLabs failed: {last_detail}")
 
 
 async def _sarvam(text: str) -> tuple[bytes | None, str | None]:
