@@ -258,9 +258,25 @@ async function init(){
     CONFIG = await (await fetch('/config')).json();
   }catch(e){ CONFIG = {stt:'webspeech',tts:'none',llm_ok:false}; }
   renderCfg();
+  loadFillers();              // async — tiny ack clips played the instant the caller stops
   await loadBookings();
   await loadOrders();
   await loadComplaints();
+}
+
+// ── Instant acknowledgments ("సరే అండి…") — mask the ~4-5s eleven_v3 reply synthesis ────
+let fillerBlobs=[];
+async function loadFillers(){
+  try{
+    const fd=new FormData(); fd.append('password', adminPw);
+    const j = await (await fetch('/api/fillers',{method:'POST',body:fd})).json();
+    fillerBlobs = (j.fillers||[]).map(f=>b64toBlob(f.b64, f.mime));
+  }catch(e){}
+}
+function playFiller(){
+  if(fillerBlobs.length && !playing){
+    playAudio(fillerBlobs[Math.floor(Math.random()*fillerBlobs.length)]);
+  }
 }
 
 function renderCfg(){
@@ -468,6 +484,7 @@ function sendSilent(note){
 // Broken / unintelligible input (STT returned nothing usable): re-ask once, then end.
 function onBrokenInput(){
   waitingForServer=false;
+  clearAudioQueue();          // cut a playing filler — there's nothing to acknowledge
   if(!listening){ setPill('idle'); return; }
   if(endingCall){ endCall(); return; }
   rearm();
@@ -517,7 +534,7 @@ async function postTurn(opts){
   fd.append('password', adminPw);
   let d;
   try{ d=await (await fetch('/api/turn',{method:'POST',body:fd})).json(); }
-  catch(e){ hideTyping(); bubble('⚠ network error','assistant'); waitingForServer=false; afterPlay(); return; }
+  catch(e){ hideTyping(); bubble('⚠ network error','assistant'); waitingForServer=false; endOfStream(); return; }
   hideTyping();
   if(d.error==='no input'){ onBrokenInput(); return; }   // broken/empty audio → re-ask, then end
   if(d.transcript && !opts.silent) bubble(d.transcript,'user');
@@ -533,7 +550,7 @@ async function postTurn(opts){
     if(d.rest_text){ sayRest(d.rest_text); }   // fetch the rest of the reply while chunk 1 plays
     else endOfStream();
   }
-  else afterPlay();
+  else endOfStream();   // no reply audio — let any playing filler finish, then re-arm
 }
 // HTTP mode: the server returns only the first sentence's audio; synthesize the remainder via
 // /api/say in parallel with playback so the whole reply isn't waited on before speaking.
@@ -571,7 +588,7 @@ function onWsMessage(ev){
     case 'error':
       hideTyping();
       bubble('⚠ '+(m.where||'')+': '+m.message,'assistant');
-      waitingForServer=false; rearm();
+      waitingForServer=false; endOfStream(); rearm();
       break;
   }
 }
@@ -709,6 +726,7 @@ function endTurn(){
   const wav=encodeWAV(floatTo16(ds), 16000);
   waitingForServer=true;
   setPill('transcribing');
+  playFiller();               // she acknowledges immediately, like a real receptionist
   if(httpMode){ postTurn({wav: wav}); return; }
   if(ws&&ws.readyState===1){
     ws.send(JSON.stringify({type:'turn_meta',format:'wav',sample_rate:16000,duration_ms:Math.round(durMs)}));
@@ -755,6 +773,7 @@ function startRecog(){
   recog.onresult=e=>{
     const t=e.results[0][0].transcript;
     clearNoReply(); noReplyCount=0;
+    playFiller();
     if(httpMode){ postTurn({text:t}); return; }
     waitingForServer=true; setPill('transcribing'); wsSend({type:'turn_text',text:t});
   };

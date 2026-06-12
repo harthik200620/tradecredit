@@ -128,7 +128,7 @@ async def _elevenlabs(text: str) -> tuple[bytes | None, str | None]:
     and go straight to Sarvam (no extra latency, and /config reports the truth)."""
     global _eleven_key_idx, _eleven_ok, _eleven_reason
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_VOICE}"
-    params = {"output_format": "mp3_44100_128"}
+    params = {"output_format": "mp3_44100_64"}  # 64kbps speech is transparent; halves transfer
     body = {
         "text": text,
         "model_id": ELEVEN_MODEL,
@@ -149,8 +149,10 @@ async def _elevenlabs(text: str) -> tuple[bytes | None, str | None]:
         if resp.status_code < 400:
             return resp.content, "audio/mpeg"
         last_detail = resp.text[:200]
-        quota_fail = resp.status_code in (401, 429) or "quota_exceeded" in last_detail
-        if quota_fail and len(_ELEVEN_KEYS) > 1:
+        # 401 / quota_exceeded = the KEY is dead (flip off). A bare 429 is usually just the
+        # free tier's 2-concurrent-request limit — transient, never disable the voice for it.
+        quota_fail = resp.status_code == 401 or "quota_exceeded" in last_detail
+        if (quota_fail or resp.status_code == 429) and len(_ELEVEN_KEYS) > 1:
             _eleven_key_idx = (_eleven_key_idx + 1) % len(_ELEVEN_KEYS)
             continue
         break

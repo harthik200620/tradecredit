@@ -89,6 +89,37 @@ async def api_login(password: str = Form(default="")):
     return {"ok": password == ADMIN_PASSWORD}
 
 
+# Short spoken acknowledgments played the INSTANT the caller stops talking, masking the
+# ~4-5s eleven_v3 synthesis of the real reply. Synthesized once per server start in the
+# active voice and cached; the client picks one at random per turn.
+_FILLER_TEXTS = ["హా అండి…", "సరే అండి…", "ఒక్క క్షణం అండి…", "అలాగే అండి…"]
+_filler_cache: dict[str, list] = {}
+
+
+@app.post("/api/fillers")
+async def api_fillers(password: str = Form(default="")):
+    if password != ADMIN_PASSWORD:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    if tts._eleven_ok is None:          # settle the provider BEFORE keying the cache
+        await tts.probe_elevenlabs()
+    key = f"{tts.active_provider()}::{tts.ELEVEN_VOICE}"
+    if key not in _filler_cache:
+        # SEQUENTIAL on purpose: the ElevenLabs free tier allows only 2 concurrent requests,
+        # and a parallel warm-up 429s. One-time cost at page load, so latency doesn't matter.
+        out = []
+        for t in _FILLER_TEXTS:
+            try:
+                a, m = await tts.synthesize(t)
+                if a:
+                    out.append({"b64": base64.b64encode(a).decode("ascii"), "mime": m})
+            except Exception:
+                pass
+        if out:  # keep one consistent voice — drop clips that fell back to another provider
+            out = [o for o in out if o["mime"] == out[0]["mime"]]
+        _filler_cache[key] = out
+    return {"fillers": _filler_cache[key]}
+
+
 @app.post("/api/say")
 async def api_say(text: str = Form(default=""), password: str = Form(default="")):
     """TTS-only — speak a fixed line without invoking the LLM (used for no-reply nudges)."""
@@ -298,12 +329,12 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
     db.log_turn(sid, "assistant", assistant_text)
 
     await _send(ws, {"type": "status", "state": "speaking"})
-    # Stream sentence-by-sentence, synthesizing ALL chunks concurrently and sending in order —
-    # the first sentence plays while the rest renders, with zero serialization between chunks.
-    tasks = [asyncio.create_task(tts.synthesize(c)) for c in _split_for_tts(assistant_text)]
-    for t in tasks:
+    # Sentence-by-sentence, SEQUENTIAL on purpose: chunk 2 synthesizes while chunk 1 is already
+    # playing in the browser, and staying at 1 concurrent request keeps the ElevenLabs free
+    # tier (2-concurrent limit) from 429ing when fillers or /api/say overlap.
+    for chunk in _split_for_tts(assistant_text):
         try:
-            audio, mime = await t
+            audio, mime = await tts.synthesize(chunk)
         except Exception:
             audio, mime = None, None
         if audio:
