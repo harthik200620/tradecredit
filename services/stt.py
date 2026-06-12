@@ -10,8 +10,19 @@ from __future__ import annotations
 import os
 import httpx
 
-SARVAM_API_KEY = os.getenv("SARVAM_API_KEY", "").strip()
-SARVAM_STT_MODEL = os.getenv("SARVAM_STT_MODEL", "saaras:v3").strip()
+# Strip BOM / zero-width chars that dashboard bulk-pastes inject (str.strip() misses them).
+_JUNK = (chr(0xFEFF), chr(0x200B), chr(0x200C), chr(0x200D))
+
+
+def _clean(name: str, default: str = "") -> str:
+    v = os.getenv(name, default) or ""
+    for ch in _JUNK:
+        v = v.replace(ch, "")
+    return v.strip().strip('"').strip("'").strip()
+
+
+SARVAM_API_KEY = _clean("SARVAM_API_KEY")
+SARVAM_STT_MODEL = _clean("SARVAM_STT_MODEL", "saaras:v3")
 STT_URL = "https://api.sarvam.ai/speech-to-text"
 
 # Ordered attempts: first the configured model (code-mix), then a robust fallback.

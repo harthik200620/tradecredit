@@ -15,15 +15,28 @@ import os
 import base64
 import httpx
 
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "elevenlabs").strip().lower()
+# Strip BOM / zero-width chars (U+FEFF, U+200B-U+200D) that dashboard bulk-pastes inject
+# and that str.strip() does NOT remove. Built via chr() so the source stays pure ASCII.
+_JUNK = (chr(0xFEFF), chr(0x200B), chr(0x200C), chr(0x200D))
 
-ELEVEN_KEY = os.getenv("ELEVENLABS_API_KEY", "").strip()
-ELEVEN_VOICE = os.getenv("ELEVENLABS_VOICE_ID", "").strip()
-ELEVEN_MODEL = os.getenv("ELEVENLABS_MODEL_ID", "eleven_v3").strip()
 
-SARVAM_KEY = os.getenv("SARVAM_API_KEY", "").strip()
-SARVAM_TTS_MODEL = os.getenv("SARVAM_TTS_MODEL", "bulbul:v2").strip()
-SARVAM_TTS_SPEAKER = os.getenv("SARVAM_TTS_SPEAKER", "anushka").strip()
+def _clean(name: str, default: str = "") -> str:
+    """Read an env var, removing BOM/zero-width chars plus quotes/whitespace."""
+    v = os.getenv(name, default) or ""
+    for ch in _JUNK:
+        v = v.replace(ch, "")
+    return v.strip().strip('"').strip("'").strip()
+
+
+TTS_PROVIDER = _clean("TTS_PROVIDER", "elevenlabs").lower()
+
+ELEVEN_KEY = _clean("ELEVENLABS_API_KEY")
+ELEVEN_VOICE = _clean("ELEVENLABS_VOICE_ID")
+ELEVEN_MODEL = _clean("ELEVENLABS_MODEL_ID", "eleven_v3")
+
+SARVAM_KEY = _clean("SARVAM_API_KEY")
+SARVAM_TTS_MODEL = _clean("SARVAM_TTS_MODEL", "bulbul:v2")
+SARVAM_TTS_SPEAKER = _clean("SARVAM_TTS_SPEAKER", "anushka")
 
 # Probe results (set by probe_elevenlabs at startup)
 _eleven_ok: bool | None = None
