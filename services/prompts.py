@@ -4,6 +4,7 @@ Edit MENU_TEXT and RESTAURANT below to match the real Krishnapatnam card before 
 live pitch. Prices here are realistic placeholders from public research, not the
 official menu.
 """
+import re
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  EDIT ME — restaurant facts + menu (placeholder prices; swap in the real card)
@@ -45,6 +46,55 @@ DRINKS & DESSERT
 - Mango Lassi — ₹110
 - Gulab Jamun (2 pc) — ₹110
 """
+
+# Menu prices (must mirror MENU_TEXT above). Used to compute an order's total server-side,
+# so the amount is always correct instead of relying on the model's arithmetic.
+MENU_PRICES = {
+    "chicken 65": 260, "kodi vepudu": 290, "chicken fry": 290,
+    "mamsam vepudu": 320, "mutton fry": 320, "bhatti paneer": 240,
+    "royyala vepudu": 380, "prawn fry": 380, "fish fry": 330,
+    "chicken biryani": 320, "mutton biryani": 390,
+    "gongura chicken biryani": 360, "ulavacharu chicken biryani": 360,
+    "veg biryani": 260, "gongura mutton": 390,
+    "andhra chicken curry": 320, "chicken curry": 320,
+    "chepala pulusu": 330, "fish curry": 330, "crab masala": 430,
+    "paneer butter masala": 270, "paneer": 270,
+    "butter naan": 60, "naan": 60, "phulka": 60,
+    "steamed rice": 130, "rice": 130,
+    "rose milk": 130, "mango lassi": 110, "lassi": 110, "gulab jamun": 110,
+}
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", " ", (s or "").lower())).strip()
+
+
+def price_of(name: str) -> int:
+    """Best-effort price for a dish name; 0 if it isn't on the menu. Longest match wins so
+    'gongura chicken biryani' beats plain 'chicken biryani'."""
+    n = " " + _norm(name) + " "
+    best, blen = 0, 0
+    for dish, price in MENU_PRICES.items():
+        if (" " + dish + " ") in n and len(dish) > blen:
+            best, blen = price, len(dish)
+    return best
+
+
+def order_total(items_str: str) -> int:
+    """Sum qty x price for an items string like '2 Chicken Biryani, 1 Gongura Mutton'.
+    Unrecognised dishes contribute 0 — better a low total than a wrong one."""
+    if not items_str:
+        return 0
+    total = 0
+    for chunk in re.split(r"[,;]|/| and | & ", items_str):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        m = re.match(r"(\d+)\s*[xX]?\s*(.+)", chunk)
+        qty, name = (int(m.group(1)), m.group(2)) if m else (1, chunk)
+        total += qty * price_of(name)
+    return total
+
 
 AGENT_NAME = "Lakshmi"
 
@@ -111,7 +161,8 @@ ORDERS (dine-in / takeaway / delivery):
    "ఇది delivery నా, dine-in నా, లేక pickup నా అండి?"
 3. ALWAYS ask HOW they want to pay — online via a WhatsApp link (prepaid), or cash on delivery (COD):
    "Payment online link ద్వారా చేస్తారా, లేదా order వచ్చినప్పుడు cash on delivery (COD) నా అండి?"
-4. Ask their NAME and PHONE number.
+4. Ask their NAME and PHONE number, then read the NAME back once to confirm you heard it right
+   (e.g. "రాజేష్ గారు, correct నా అండి?") before placing the order.
 5. Call create_order(name, phone, items, order_type, payment, notes). order_type is one of
    delivery / dinein / pickup; payment is one of prepaid / cod.
 6. Then confirm in Telugu — read the items back, then the order type:

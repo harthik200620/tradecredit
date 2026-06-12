@@ -367,11 +367,13 @@ function addOrderCard(o){
   const payLabel = {cod:'💵 COD', prepaid:'💳 Prepaid'}[pay] || '';
   const metaBits = [otLabel, payLabel].filter(Boolean).join('&nbsp; · &nbsp;');
   const metaRow = metaBits ? `<div class="row"><span>${metaBits}</span></div>` : '';
+  const totalRow = (o.total>0) ? `<div class="row"><span>💰 <b>₹${esc(o.total)}</b></span></div>` : '';
   card.innerHTML =
     `<div class="top"><span class="nm">${esc(o.name)}</span><span class="badge">${esc(o.status||'received')}</span></div>`+
     `<div class="row"><span><b>📞</b> ${esc(o.phone)}</span></div>`+
     `<div class="notes">🍽 ${esc(o.items)}</div>`+
     metaRow +
+    totalRow +
     notes +
     `<div class="when">${o.created_at? esc(o.created_at):''} · #${esc(o.id)}</div>`;
   if(fresh) prependCard(box, card);
@@ -492,7 +494,7 @@ function sysNote(t){
   $('convo').appendChild(d); $('convo').scrollTop=$('convo').scrollHeight;
 }
 function endCall(){
-  endingCall=false; noReplyCount=0; clearNoReply();
+  endingCall=false; noReplyCount=0; clearNoReply(); clearAudioQueue();
   if(listening){
     listening=false; stopMic(); stopRecog();
     $('btnStart').classList.remove('on'); $('btnStart').textContent='● Start talking';
@@ -523,7 +525,7 @@ async function postTurn(opts){
   if(d.complaint){ addComplaintCard(d.complaint); switchTab('complaints'); endingCall=true; }
   if(Array.isArray(d.history)) httpHistory=d.history;
   waitingForServer=false;
-  if(d.audio_b64){ playAudio(b64toBlob(d.audio_b64, d.audio_mime)); }
+  if(d.audio_b64){ playAudio(b64toBlob(d.audio_b64, d.audio_mime)); endOfStream(); }
   else afterPlay();
 }
 
@@ -546,10 +548,8 @@ function onWsMessage(ev){
       if(m.state==='thinking'){ showTyping(); setPill('thinking'); break; }
       if(m.state!=='idle'){ setPill(m.state); break; }
       hideTyping(); waitingForServer=false;
-      if(endingCall && !playing){ endCall(); break; }
       if(m.detail==='no speech detected'){ onBrokenInput(); break; }   // broken input → re-ask, then end
-      rearm(); if(listening) armNoReply();
-      setPill(listening?'listening':'idle');
+      endOfStream();   // re-arm (or end the call) once any queued/playing audio finishes
       break;
     case 'error':
       hideTyping();
@@ -591,13 +591,13 @@ function stopTalking(){
   $('btnStart').classList.remove('on'); $('btnStart').textContent='● Start talking';
   $('btnStop').disabled=true;
   stopMic(); stopRecog();
-  if(currentAudio){ try{currentAudio.pause();}catch(e){} }
+  clearAudioQueue();
   wsSend({type:'control',action:'stop'});
   setPill('idle');
 }
 
 function restart(){
-  clearNoReply(); noReplyCount=0; endingCall=false;
+  clearNoReply(); noReplyCount=0; endingCall=false; clearAudioQueue();
   // clear the visible conversation + boards for a fresh demo (DB rows are kept)
   $('convo').querySelectorAll('.msg,.typing').forEach(n=>n.remove());
   const e=$('convoEmpty'); if(e) e.style.display='';
@@ -622,7 +622,7 @@ async function sendTyped(){
 
 // ── Mic capture (Sarvam path): AudioWorklet + energy VAD + WAV encode ─────────
 let capturing=false, speechFrames=[], preRoll=[], silentSamples=0, speechSamples=0, voicedSamples=0, srate=48000;
-const PREROLL_MS=300, SILENCE_END_MS=1000, MIN_SPEECH_MS=300, MAX_TURN_MS=15000;
+const PREROLL_MS=300, SILENCE_END_MS=650, MIN_SPEECH_MS=300, MAX_TURN_MS=15000;
 // A full phrase (>= MIN_COMPLETE_MS of actual voice) ends on a normal pause; a short fragment
 // like "నేను" is given up to FRAGMENT_WAIT_MS to continue before we finalize it — so a thinking
 // gap mid-sentence no longer cuts the caller off and ships a half sentence to the STT.
@@ -747,12 +747,33 @@ function startRecog(){
 function stopRecog(){ if(recog){ try{recog.onend=null; recog.stop();}catch(e){} recog=null; } }
 
 // ── Playback (gates the mic so the agent never hears itself) ──────────────────
+// Queue so the server can stream a reply sentence-by-sentence (the first sentence plays while
+// the rest is still synthesizing). We only re-arm the mic once the server has signalled the turn
+// is done (streamDone) AND every queued chunk has finished — so a gap between chunks mid-reply
+// never re-opens the mic or trips the no-reply timer.
+let audioQ=[], qActive=false, streamDone=false;
+function clearAudioQueue(){ audioQ=[]; qActive=false; streamDone=false; playing=false;
+  if(currentAudio){ try{currentAudio.pause();}catch(e){} } }
 function playAudio(blob){
-  playing=true; setPill('speaking');
-  const url=URL.createObjectURL(blob); const a=new Audio(url); currentAudio=a;
-  const done=()=>{ playing=false; try{URL.revokeObjectURL(url);}catch(e){} afterPlay(); };
+  if(!qActive) streamDone=false;     // first chunk of a new reply
+  audioQ.push(blob);
+  if(!qActive) drainAudio();
+}
+function drainAudio(){
+  if(audioQ.length===0){
+    qActive=false;
+    if(streamDone){ playing=false; afterPlay(); }   // turn truly done → re-arm / end call
+    return;                                          // else wait: more chunks still streaming
+  }
+  qActive=true; playing=true; setPill('speaking');
+  const url=URL.createObjectURL(audioQ.shift()); const a=new Audio(url); currentAudio=a;
+  const done=()=>{ try{URL.revokeObjectURL(url);}catch(e){} drainAudio(); };
   a.onended=done; a.onerror=done;
   a.play().catch(done);
+}
+function endOfStream(){     // server signalled the turn is finished (status idle)
+  streamDone=true;
+  if(!qActive && audioQ.length===0){ playing=false; afterPlay(); }
 }
 function afterPlay(){
   if(endingCall){ endCall(); return; }

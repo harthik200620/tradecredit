@@ -15,6 +15,8 @@ import os
 import base64
 import httpx
 
+from . import _http
+
 # Strip BOM / zero-width chars (U+FEFF, U+200B-U+200D) that dashboard bulk-pastes inject
 # and that str.strip() does NOT remove. Built via chr() so the source stays pure ASCII.
 _JUNK = (chr(0xFEFF), chr(0x200B), chr(0x200C), chr(0x200D))
@@ -78,22 +80,22 @@ async def probe_elevenlabs() -> None:
         _eleven_reason = "no ELEVENLABS_VOICE_ID"
         return
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                "https://api.elevenlabs.io/v1/models", headers={"xi-api-key": ELEVEN_KEY}
+        resp = await _http.client().get(
+            "https://api.elevenlabs.io/v1/models",
+            headers={"xi-api-key": ELEVEN_KEY}, timeout=15,
+        )
+        resp.raise_for_status()
+        models = resp.json()
+        ids = {m.get("model_id") for m in models} if isinstance(models, list) else set()
+        if ELEVEN_MODEL in ids:
+            _eleven_ok = True
+            _eleven_reason = "ok"
+        else:
+            _eleven_ok = False
+            _eleven_reason = (
+                f"{ELEVEN_MODEL} not on this key — falling back to Sarvam. "
+                f"available: {sorted(i for i in ids if i)}"
             )
-            resp.raise_for_status()
-            models = resp.json()
-            ids = {m.get("model_id") for m in models} if isinstance(models, list) else set()
-            if ELEVEN_MODEL in ids:
-                _eleven_ok = True
-                _eleven_reason = "ok"
-            else:
-                _eleven_ok = False
-                _eleven_reason = (
-                    f"{ELEVEN_MODEL} not on this key — falling back to Sarvam. "
-                    f"available: {sorted(i for i in ids if i)}"
-                )
     except Exception as e:
         _eleven_ok = False
         _eleven_reason = f"probe failed ({type(e).__name__}: {e}) — falling back to Sarvam"
@@ -113,10 +115,9 @@ async def _elevenlabs(text: str) -> tuple[bytes | None, str | None]:
             "use_speaker_boost": True,
         },
     }
-    async with httpx.AsyncClient(timeout=40) as client:
-        resp = await client.post(url, headers=headers, params=params, json=body)
-        resp.raise_for_status()
-        return resp.content, "audio/mpeg"
+    resp = await _http.client().post(url, headers=headers, params=params, json=body)
+    resp.raise_for_status()
+    return resp.content, "audio/mpeg"
 
 
 async def _sarvam(text: str) -> tuple[bytes | None, str | None]:
@@ -130,14 +131,13 @@ async def _sarvam(text: str) -> tuple[bytes | None, str | None]:
         "model": SARVAM_TTS_MODEL,
         "speaker": SARVAM_TTS_SPEAKER,
     }
-    async with httpx.AsyncClient(timeout=40) as client:
-        resp = await client.post(url, headers=headers, json=body)
-        resp.raise_for_status()
-        j = resp.json()
-        audios = j.get("audios") or []
-        if not audios:
-            return None, None
-        return base64.b64decode(audios[0]), "audio/wav"
+    resp = await _http.client().post(url, headers=headers, json=body)
+    resp.raise_for_status()
+    j = resp.json()
+    audios = j.get("audios") or []
+    if not audios:
+        return None, None
+    return base64.b64decode(audios[0]), "audio/wav"
 
 
 async def synthesize(text: str) -> tuple[bytes | None, str | None]:

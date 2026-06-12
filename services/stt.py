@@ -10,6 +10,8 @@ from __future__ import annotations
 import os
 import httpx
 
+from . import _http
+
 # Strip BOM / zero-width chars that dashboard bulk-pastes inject (str.strip() misses them).
 _JUNK = (chr(0xFEFF), chr(0x200B), chr(0x200C), chr(0x200D))
 
@@ -42,18 +44,18 @@ async def transcribe_wav(wav_bytes: bytes) -> str:
 
     headers = {"api-subscription-key": SARVAM_API_KEY}
     last_err = None
-    async with httpx.AsyncClient(timeout=30) as client:
-        for attempt in _ATTEMPTS:
-            files = {"file": ("turn.wav", wav_bytes, "audio/wav")}
-            data = {"model": attempt["model"], "language_code": "te-IN", **attempt["extra"]}
-            try:
-                resp = await client.post(STT_URL, headers=headers, files=files, data=data)
-                if resp.status_code >= 400:
-                    last_err = f"Sarvam STT {resp.status_code} ({attempt['model']}): {resp.text[:300]}"
-                    continue
-                j = resp.json()
-                return (j.get("transcript") or "").strip()
-            except Exception as e:  # network / parse — try the next attempt
-                last_err = f"{type(e).__name__}: {e}"
+    client = _http.client()
+    for attempt in _ATTEMPTS:
+        files = {"file": ("turn.wav", wav_bytes, "audio/wav")}
+        data = {"model": attempt["model"], "language_code": "te-IN", **attempt["extra"]}
+        try:
+            resp = await client.post(STT_URL, headers=headers, files=files, data=data, timeout=30)
+            if resp.status_code >= 400:
+                last_err = f"Sarvam STT {resp.status_code} ({attempt['model']}): {resp.text[:300]}"
                 continue
+            j = resp.json()
+            return (j.get("transcript") or "").strip()
+        except Exception as e:  # network / parse — try the next attempt
+            last_err = f"{type(e).__name__}: {e}"
+            continue
     raise RuntimeError(last_err or "Sarvam STT failed")

@@ -10,6 +10,8 @@ import sqlite3
 import threading
 from pathlib import Path
 
+from services.prompts import order_total
+
 # On Vercel the project filesystem is read-only except /tmp (ephemeral per instance).
 _DB_BASE = Path("/tmp") if os.getenv("VERCEL") else Path(__file__).parent
 DB_PATH = _DB_BASE / "app.db"
@@ -60,6 +62,7 @@ CREATE TABLE IF NOT EXISTS orders (
   items       TEXT    NOT NULL,
   order_type  TEXT    DEFAULT '',           -- delivery | dinein | pickup
   payment     TEXT    DEFAULT '',           -- prepaid | cod
+  total       INTEGER DEFAULT 0,            -- computed rupee total from the menu
   notes       TEXT    DEFAULT '',
   status      TEXT    DEFAULT 'received',   -- received | changed | confirmed
   created_at  TEXT    DEFAULT (datetime('now','localtime'))
@@ -86,6 +89,8 @@ def init_db() -> None:
                 conn.execute("ALTER TABLE orders ADD COLUMN order_type TEXT DEFAULT ''")
             if "payment" not in cols:
                 conn.execute("ALTER TABLE orders ADD COLUMN payment TEXT DEFAULT ''")
+            if "total" not in cols:
+                conn.execute("ALTER TABLE orders ADD COLUMN total INTEGER DEFAULT 0")
             conn.commit()
     except Exception:
         pass
@@ -171,17 +176,19 @@ def recent_complaints(limit: int = 50) -> list[dict]:
 
 def insert_order(o: dict) -> dict:
     """Insert a food order and return the saved row."""
+    items = str(o.get("items", "")).strip()
     with _lock:
         conn = _connect()
         cur = conn.execute(
-            "INSERT INTO orders (name, phone, items, order_type, payment, notes, status) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO orders (name, phone, items, order_type, payment, total, notes, status) "
+            "VALUES (?,?,?,?,?,?,?,?)",
             (
                 str(o.get("name", "")).strip(),
                 str(o.get("phone", "")).strip(),
-                str(o.get("items", "")).strip(),
+                items,
                 str(o.get("order_type", "") or "").strip().lower(),
                 str(o.get("payment", "") or "").strip().lower(),
+                int(o.get("total") or order_total(items)),
                 str(o.get("notes", "") or "").strip(),
                 str(o.get("status", "received")).strip(),
             ),
@@ -220,9 +227,10 @@ def update_latest_order(
         new_notes = row["notes"] if notes is None else str(notes).strip()
         new_type = row["order_type"] if order_type in (None, "") else str(order_type).strip().lower()
         new_pay = row["payment"] if payment in (None, "") else str(payment).strip().lower()
+        new_total = row["total"] if items in (None, "") else order_total(new_items)
         conn.execute(
-            "UPDATE orders SET items=?, notes=?, order_type=?, payment=?, status='changed' WHERE id=?",
-            (new_items, new_notes, new_type, new_pay, row["id"]),
+            "UPDATE orders SET items=?, notes=?, order_type=?, payment=?, total=?, status='changed' WHERE id=?",
+            (new_items, new_notes, new_type, new_pay, new_total, row["id"]),
         )
         conn.commit()
         return dict(conn.execute("SELECT * FROM orders WHERE id=?", (row["id"],)).fetchone())

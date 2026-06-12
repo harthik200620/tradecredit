@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -186,6 +187,22 @@ async def _send(ws: WebSocket, obj: dict):
     await ws.send_text(json.dumps(obj, ensure_ascii=False))
 
 
+_SENT_END = re.compile(r"[.!?…।]\s")
+
+
+def _split_for_tts(text: str) -> list[str]:
+    """[first sentence, remainder] so the first sentence can start playing while the rest
+    synthesizes. Short replies stay a single chunk (no extra TTS round-trip)."""
+    t = (text or "").strip()
+    if len(t) < 55:
+        return [t] if t else []
+    m = _SENT_END.search(t)
+    if not m:
+        return [t]
+    first, rest = t[: m.end()].strip(), t[m.end():].strip()
+    return [first, rest] if rest else [t]
+
+
 async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = False):
     """One full customer turn. `silent` hides the user echo (internal no-reply nudges)."""
     text = (text or "").strip()
@@ -247,13 +264,15 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
     db.log_turn(sid, "assistant", assistant_text)
 
     await _send(ws, {"type": "status", "state": "speaking"})
-    try:
-        audio, mime = await tts.synthesize(assistant_text)
-    except Exception:
-        audio, mime = None, None
-    if audio:
-        await _send(ws, {"type": "tts_audio_meta", "mime": mime, "bytes": len(audio)})
-        await ws.send_bytes(audio)
+    # Stream sentence-by-sentence: the first sentence plays while the rest is still synthesizing.
+    for chunk in _split_for_tts(assistant_text):
+        try:
+            audio, mime = await tts.synthesize(chunk)
+        except Exception:
+            audio, mime = None, None
+        if audio:
+            await _send(ws, {"type": "tts_audio_meta", "mime": mime, "bytes": len(audio)})
+            await ws.send_bytes(audio)
     await _send(ws, {"type": "status", "state": "idle"})
 
 

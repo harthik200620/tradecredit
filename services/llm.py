@@ -13,6 +13,7 @@ from datetime import datetime
 
 import httpx
 
+from . import _http
 from .prompts import (
     build_system_prompt,
     CREATE_BOOKING_TOOL,
@@ -84,25 +85,54 @@ _FALLBACK_CONFIRM = {
 }
 
 
+_PARTY_TE = {1: "ఒక్కరికి", 2: "ఇద్దరికి", 3: "ముగ్గురికి", 4: "నలుగురికి", 5: "ఐదుగురికి",
+             6: "ఆరుగురికి", 7: "ఏడుగురికి", 8: "ఎనిమిది మందికి", 9: "తొమ్మిది మందికి",
+             10: "పది మందికి"}
+
+
 def _fallback_for(tool: str | None, args: dict | None) -> str:
-    """Spoken line used when the model adds no text after a tool call (common on flash-lite).
-    For orders it tailors the line to the order type AND the chosen payment method."""
+    """The tailored spoken confirmation for a successful tool call (also reused as the fallback
+    if a follow-up generation ever returns empty). Built locally from the tool args, so it is
+    instant and never needs a second Gemini call."""
+    a = args or {}
+    name = str(a.get("name") or "").strip()
+    who = f"{name} గారు, " if name else ""
+
+    if tool == "create_booking":
+        try:
+            party = int(a.get("party_size") or 0)
+        except (TypeError, ValueError):
+            party = 0
+        p = _PARTY_TE.get(party, (f"{party} మందికి" if party else ""))
+        tail = f" {p}." if p else ""
+        return f"{who}మీ table book అయ్యింది అండి!{tail} Details అన్నీ WhatsApp లో పంపిస్తాను 🙏"
+
     if tool == "create_order":
-        a = args or {}
+        items = str(a.get("items") or "").strip()
         ot = (a.get("order_type") or "").lower()
         pay = (a.get("payment") or "").lower()
-        if ot in ("dinein", "pickup"):
-            ready = "మీ order తీసుకున్నాను అండి, సుమారు ముప్పై నిమిషాల్లో ready అవుతుంది. "
-        else:
-            ready = "మీ order తీసుకున్నాను అండి, delivery updates WhatsApp లో పంపిస్తాను. "
+        read = f"మీ {items} order తీసుకున్నాను అండి. " if items else "మీ order తీసుకున్నాను అండి. "
+        ready = ("సుమారు ముప్పై నిమిషాల్లో ready అవుతుంది. " if ot in ("dinein", "pickup")
+                 else "Delivery updates WhatsApp లో పంపిస్తాను. ")
         if pay == "cod":
             payline = "Order వచ్చినప్పుడు cash ఇవ్వొచ్చు. ధన్యవాదాలు! 🙏"
         elif pay == "prepaid":
             payline = "Payment link WhatsApp లో పంపిస్తాను, దాని ద్వారా pay చేయండి. ధన్యవాదాలు! 🙏"
         else:
-            payline = ("Payment link WhatsApp లో వస్తుంది — దాని ద్వారా pay చేయొచ్చు లేదా order "
+            payline = ("Payment link WhatsApp లో వస్తుంది — link ద్వారా pay చేయొచ్చు లేదా order "
                        "వచ్చినప్పుడు cash on delivery చేయొచ్చు. ధన్యవాదాలు! 🙏")
-        return ready + payline
+        return who + read + ready + payline
+
+    if tool == "update_order":
+        items = str(a.get("items") or "").strip()
+        if items:
+            return f"మీ order update చేశాను అండి — ఇప్పుడు {items}. కొత్త details WhatsApp లో పంపిస్తాను 🙏"
+        return "మీ order update చేశాను అండి 🙏 కొత్త details WhatsApp లో పంపిస్తాను."
+
+    if tool == "log_complaint":
+        return (who + "చాలా క్షమించండి అండి… మీకు WhatsApp లో message వస్తుంది, ఆ photo అక్కడ "
+                "పంపండి, మా team త్వరగా మిమ్మల్ని contact చేస్తుంది.")
+
     return _FALLBACK_CONFIRM.get(tool, "సరే అండి, అయ్యింది.")
 
 
@@ -150,17 +180,17 @@ async def _generate(contents: list) -> dict:
     }
     url = _URL.format(model=GEMINI_MODEL)
     last_err = None
-    async with httpx.AsyncClient(timeout=40) as client:
-        # Try keys starting at the current one; rotate past any that are quota'd/invalid.
-        for _ in range(len(_KEYS)):
-            resp = await client.post(url, params={"key": _KEYS[_key_idx]}, json=body)
-            if resp.status_code < 400:
-                return resp.json()
-            last_err = f"Gemini {resp.status_code} (key {_key_idx + 1}/{len(_KEYS)}): {resp.text[:160]}"
-            if _should_rotate(resp.status_code, resp.text):
-                _key_idx = (_key_idx + 1) % len(_KEYS)
-                continue
-            raise RuntimeError(f"Gemini {resp.status_code}: {resp.text[:300]}")
+    client = _http.client()  # shared keep-alive client (no per-call TLS handshake)
+    # Try keys starting at the current one; rotate past any that are quota'd/invalid.
+    for _ in range(len(_KEYS)):
+        resp = await client.post(url, params={"key": _KEYS[_key_idx]}, json=body)
+        if resp.status_code < 400:
+            return resp.json()
+        last_err = f"Gemini {resp.status_code} (key {_key_idx + 1}/{len(_KEYS)}): {resp.text[:160]}"
+        if _should_rotate(resp.status_code, resp.text):
+            _key_idx = (_key_idx + 1) % len(_KEYS)
+            continue
+        raise RuntimeError(f"Gemini {resp.status_code}: {resp.text[:300]}")
     raise RuntimeError("All Gemini keys exhausted — " + (last_err or "quota/invalid"))
 
 
@@ -206,28 +236,30 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict) -> str:
                     "message": "Missing " + ", ".join(missing)
                     + ". Politely ask the customer for these before proceeding.",
                 }
-            else:
-                row = await handlers[name](args)
-                if row is None:
-                    response = {
-                        "status": "error",
-                        "message": "Could not find a matching record. Tell the customer politely "
-                        "in Telugu and offer to help (e.g. place a new order).",
-                    }
-                else:
-                    last_tool, last_args = name, args
-                    response = {
-                        "status": "success",
-                        "id": row.get("id"),
-                        "message": _SUCCESS_MSG.get(name, "Done."),
-                    }
-            contents.append(
-                {
-                    "role": "user",
-                    "parts": [{"functionResponse": {"name": name, "response": response}}],
+                contents.append({"role": "user",
+                                 "parts": [{"functionResponse": {"name": name, "response": response}}]})
+                continue  # let the model ask for the missing fields
+
+            row = await handlers[name](args)
+            if row is None:
+                response = {
+                    "status": "error",
+                    "message": "Could not find a matching record. Tell the customer politely "
+                    "in Telugu and offer to help (e.g. place a new order).",
                 }
-            )
-            continue  # loop again to get the spoken reply
+                contents.append({"role": "user",
+                                 "parts": [{"functionResponse": {"name": name, "response": response}}]})
+                continue  # let the model explain / recover
+
+            # SUCCESS — speak a tailored confirmation built locally and SKIP the second Gemini
+            # call (flash-lite usually returns empty text here anyway). Halves the LLM latency
+            # and quota on every booking / order / complaint turn.
+            last_tool, last_args = name, args
+            contents.append({"role": "user", "parts": [{"functionResponse": {
+                "name": name, "response": {"status": "success", "id": row.get("id")}}}]})
+            spoken = _fallback_for(name, args)
+            contents.append({"role": "model", "parts": [{"text": spoken}]})
+            return spoken
 
         final = "".join(text_chunks).strip()
         if not final:
