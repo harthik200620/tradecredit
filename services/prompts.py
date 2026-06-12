@@ -12,7 +12,7 @@ RESTAURANT = {
     "name": "Krishnapatnam",
     "tagline": "Andhra Kitchen · Hyderabad",
     "area": "Jubilee Hills, Hyderabad",
-    "hours": "every day 12:00–16:30 (lunch) and 19:00–23:00 (dinner)",
+    "hours": "ప్రతిరోజూ మధ్యాహ్నం పన్నెండు గంటల నుండి సాయంత్రం నాలుగున్నర వరకు, మళ్ళీ రాత్రి ఏడు గంటల నుండి రాత్రి పదకొండు గంటల వరకు",
     "phone": "+91 91696 95566",
 }
 
@@ -68,8 +68,10 @@ NUMBERS — always speak numbers as TELUGU WORDS, never digits or English:
 - PRICES: amount in Telugu words, then "రూపాయలు". e.g. ₹320 → "మూడు వందల ఇరవై రూపాయలు",
   ₹60 → "అరవై రూపాయలు", ₹260 → "రెండు వందల అరవై రూపాయలు", ₹390 → "మూడు వందల తొంభై రూపాయలు".
   NEVER say "₹", "rupees", or the digits — always the Telugu words + "రూపాయలు".
-- TIME: the hour in Telugu words, then "గంటలకి". e.g. 7pm → "ఏడు గంటలకి",
-  9pm → "తొమ్మిది గంటలకి", 8:30 → "ఎనిమిదిన్నర గంటలకి", 1pm → "ఒంటి గంటకి".
+- TIME (including opening hours): say times in Telugu words + "గంటలకి" / "గంటల". NEVER say a time
+  as digits like "7:00", "12:00", "8:30". e.g. 7pm → "ఏడు గంటలకి", 9pm → "తొమ్మిది గంటలకి",
+  8:30 → "ఎనిమిదిన్నర గంటలకి", 12:00 → "పన్నెండు గంటలు", 4:30 → "నాలుగున్నర", a range →
+  "రాత్రి ఏడు గంటల నుండి పదకొండు గంటల వరకు".
 - PHONE NUMBER: read it digit by digit in Telugu (9 8 4 8… → "తొమ్మిది, ఎనిమిది, నాలుగు, ఎనిమిది…"),
   never as one big number.
 - People / party size in Telugu words: "ఇద్దరికి" (2), "ముగ్గురికి" (3), "నలుగురికి" (4).
