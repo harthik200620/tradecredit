@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -28,6 +29,7 @@ import db
 from services import stt, tts, llm
 
 STATIC_DIR = Path(__file__).parent / "static"
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "sahayak@ai")
 
 
 @asynccontextmanager
@@ -69,14 +71,23 @@ async def complaints():
     return {"complaints": db.recent_complaints()}
 
 
+@app.post("/api/login")
+async def api_login(password: str = Form(default="")):
+    """Admin gate — validates the access password for the demo."""
+    return {"ok": password == ADMIN_PASSWORD}
+
+
 @app.post("/api/turn")
 async def api_turn(
     text: str = Form(default=""),
     history: str = Form(default="[]"),
+    password: str = Form(default=""),
     audio: UploadFile = File(default=None),
 ):
     """Stateless turn for HTTP/serverless clients (Vercel has no WebSocket).
     The client carries the conversation history and sends it back each turn."""
+    if password != ADMIN_PASSWORD:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
     try:
         contents = json.loads(history) if history else []
     except Exception:
@@ -221,6 +232,11 @@ async def ws_endpoint(ws: WebSocket):
             mtype = data.get("type")
 
             if mtype == "hello":
+                if data.get("password") != ADMIN_PASSWORD:
+                    await _send(ws, {"type": "error", "where": "auth",
+                                     "message": "unauthorized", "recoverable": False})
+                    await ws.close()
+                    return
                 # client may carry its own session id; keep the server one authoritative
                 await _send(ws, {"type": "status", "state": "idle", "detail": "connected"})
             elif mtype == "turn_text":

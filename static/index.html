@@ -101,9 +101,38 @@
   .typer input{flex:1;font-family:inherit;font-size:14px;padding:11px 14px;border-radius:11px;border:1px solid var(--line);background:var(--paper)}
   .typer input:focus{outline:2px solid var(--gold2);outline-offset:1px}
   .hint{font-size:11px;color:var(--muted);margin-top:9px;line-height:1.5}
+
+  /* Admin lock screen */
+  .lock{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;
+    background:var(--paper);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E");}
+  .lockcard{background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:0 14px 44px rgba(40,30,15,.14);
+    padding:34px 30px;max-width:360px;width:100%;text-align:center}
+  .lockcard h2{font-family:'Fraunces',serif;color:var(--green-deep);margin:14px 0 2px;font-size:21px}
+  .lockcard .tag{color:var(--copper-deep);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+  .lockcard p{color:var(--muted);font-size:13px;margin:6px 0 18px;line-height:1.5}
+  .lockcard input{width:100%;font-family:inherit;font-size:15px;padding:12px 14px;border-radius:11px;border:1px solid var(--line);background:var(--paper);text-align:center}
+  .lockcard input:focus{outline:2px solid var(--gold2);outline-offset:1px}
+  .lockcard button{width:100%;margin-top:12px;background:var(--copper);color:#fff;border-color:var(--copper-deep);padding:12px;font-size:15px;font-weight:600}
+  .lockerr{color:var(--alert);font-size:12px;margin-top:10px;min-height:16px}
 </style>
 </head>
 <body>
+<div id="lock" class="lock">
+  <div class="lockcard">
+    <svg width="54" height="54" viewBox="0 0 58 58" aria-hidden="true">
+      <circle cx="29" cy="29" r="27" fill="#22372A"/>
+      <circle cx="29" cy="29" r="27" fill="none" stroke="#BE754A" stroke-width="2"/>
+      <text x="29" y="38" text-anchor="middle" font-family="Fraunces,serif" font-weight="700" font-size="26" fill="#E9C77E">K</text>
+    </svg>
+    <div class="tag">Sahayak AI · Admin</div>
+    <h2>Krishnapatnam Demo</h2>
+    <p>Enter the access password to open the demo.</p>
+    <input id="lockpw" type="password" placeholder="Password" autocomplete="off" />
+    <button id="lockbtn">Unlock</button>
+    <div id="lockerr" class="lockerr"></div>
+  </div>
+</div>
 <div class="wrap">
   <header>
     <div class="mark">
@@ -188,8 +217,32 @@ let httpMode = false, httpHistory = [];   // HTTP fallback when WebSocket is una
 let noReplyTimer = null, noReplyCount = 0, endingCall = false;
 const NO_REPLY_MS = 6000;   // wait this long for the caller to speak before re-prompting / closing
 
-// ── boot ─────────────────────────────────────────────────────────────────────
-init();
+// ── boot / admin gate ────────────────────────────────────────────────────────
+let adminPw = '';
+$('lockbtn').onclick = unlock;
+$('lockpw').addEventListener('keydown', e=>{ if(e.key==='Enter') unlock(); });
+bootAuth();
+
+async function verifyPw(pw){
+  try{
+    const fd=new FormData(); fd.append('password', pw);
+    const j=await (await fetch('/api/login',{method:'POST',body:fd})).json();
+    return !!j.ok;
+  }catch(e){ return false; }
+}
+async function bootAuth(){
+  const saved = localStorage.getItem('kpw') || '';
+  if(saved && await verifyPw(saved)){ adminPw=saved; openApp(); }
+  else { $('lock').style.display='flex'; setTimeout(()=>$('lockpw').focus(), 60); }
+}
+async function unlock(){
+  const pw=$('lockpw').value.trim(); if(!pw) return;
+  $('lockerr').textContent='Checking…';
+  if(await verifyPw(pw)){ adminPw=pw; localStorage.setItem('kpw', pw); openApp(); }
+  else { $('lockerr').textContent='Wrong password. Try again.'; $('lockpw').select(); }
+}
+function openApp(){ $('lock').style.display='none'; init(); }
+
 async function init(){
   try{
     CONFIG = await (await fetch('/config')).json();
@@ -316,7 +369,7 @@ function connectWS(){
     }catch(e){ return reject(e); }
     ws.binaryType='arraybuffer';
     const to=setTimeout(()=>reject(new Error('ws timeout')), 3500);
-    ws.onopen=()=>{ clearTimeout(to); ws.send(JSON.stringify({type:'hello'})); resolve(); };
+    ws.onopen=()=>{ clearTimeout(to); ws.send(JSON.stringify({type:'hello', password: adminPw})); resolve(); };
     ws.onerror=(e)=>{ clearTimeout(to); reject(e); };
     ws.onclose=()=>{ };
     ws.onmessage=onWsMessage;
@@ -383,6 +436,7 @@ async function postTurn(opts){
   if(opts.text) fd.append('text', opts.text);
   if(opts.wav)  fd.append('audio', new Blob([opts.wav],{type:'audio/wav'}), 'turn.wav');
   fd.append('history', JSON.stringify(httpHistory));
+  fd.append('password', adminPw);
   let d;
   try{ d=await (await fetch('/api/turn',{method:'POST',body:fd})).json(); }
   catch(e){ hideTyping(); bubble('⚠ network error','assistant'); waitingForServer=false; afterPlay(); return; }
