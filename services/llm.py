@@ -39,7 +39,9 @@ def _load_keys() -> list[str]:
     if combo:
         raw += [p.strip() for p in combo.split(",")]
     for name in ("GEMINI_API_KEY", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
-                 "GEMINI_API_KEY_4", "GEMINI_API_KEY_5"):
+                 "GEMINI_API_KEY_4", "GEMINI_API_KEY_5", "GEMINI_API_KEY_6",
+                 "GEMINI_API_KEY_7", "GEMINI_API_KEY_8", "GEMINI_API_KEY_9",
+                 "GEMINI_API_KEY_10", "GEMINI_API_KEY_11", "GEMINI_API_KEY_12"):
         raw.append(_clean(name))
     out, seen = [], set()
     for k in raw:
@@ -50,7 +52,7 @@ def _load_keys() -> list[str]:
 
 
 _KEYS = _load_keys()
-_key_idx = 0   # index of the current key; advances on quota/invalid errors and persists
+_key_idx = 0   # round-robins one step per request (spreads load) + advances on quota/invalid
 
 # Sanitize the model: fall back to a known-good id if the env value is empty or garbled.
 _raw_model = _clean("GEMINI_MODEL")
@@ -230,7 +232,12 @@ async def _generate(contents: list) -> dict:
     url = _URL.format(model=GEMINI_MODEL)
     last_err = None
     client = _http.client()  # shared keep-alive client (no per-call TLS handshake)
-    # Try keys starting at the current one; rotate past any that are quota'd/invalid.
+    # Round-robin: each new request starts on the NEXT key, so the per-key free-tier rate
+    # limit (RPM/RPD) is spread across all keys instead of hammering one until it 429s —
+    # effective throughput ≈ single-key limit × number of keys.
+    if len(_KEYS) > 1:
+        _key_idx = (_key_idx + 1) % len(_KEYS)
+    # Then try keys starting there; rotate past any that are quota'd/invalid this turn.
     for _ in range(len(_KEYS)):
         resp = await client.post(url, params={"key": _KEYS[_key_idx]}, json=body)
         if resp.status_code < 400:
