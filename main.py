@@ -32,7 +32,18 @@ from services import stt, tts, llm
 from services.prompts import order_total
 
 STATIC_DIR = Path(__file__).parent / "static"
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "sahayak@ai")
+
+
+def _clean_env(v: str) -> str:
+    """Strip BOM / zero-width chars (CLI pipes and dashboard pastes inject these) plus quotes
+    and surrounding whitespace — the same hygiene the service modules apply to their keys. Without
+    it, a stray invisible char in ADMIN_PASSWORD makes EVERY password compare as 'wrong'."""
+    for ch in (chr(0xFEFF), chr(0x200B), chr(0x200C), chr(0x200D)):
+        v = (v or "").replace(ch, "")
+    return v.strip().strip('"').strip("'").strip()
+
+
+ADMIN_PASSWORD = _clean_env(os.getenv("ADMIN_PASSWORD", "sahayak@ai"))
 
 
 @asynccontextmanager
