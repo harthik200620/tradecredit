@@ -1,16 +1,19 @@
-"""Sahayak AI — Telugu voice receptionist demo (Krishnapatnam).
+"""Verba — AI voice & chat agents (a Sahayak AI product).
 
 FastAPI app:
-  GET  /              -> the single-page demo UI
+  GET  /              -> the agent page (scenario picker: lead call / collections / WhatsApp)
+  GET  /crm           -> Verba CRM: live write-back view of every conversation outcome
+  GET  /pitch         -> one-screen partnership pitch
   GET  /config        -> which STT/TTS providers are live (the page configures itself)
-  GET  /api/bookings  -> recent bookings (populates the panel on load / after restart)
-  WS   /ws            -> the turn loop: audio/text in -> transcript, reply, TTS, bookings out
+  POST /api/opening   -> the line the agent speaks FIRST for a scenario (text + cached audio)
+  POST /api/crm       -> recent CRM rows
+  POST /api/turn      -> one stateless turn for HTTP/serverless clients
+  WS   /ws            -> the turn loop when WebSockets are available (local uvicorn)
 
 Run:  python -m uvicorn main:app --reload --port 8000   ->  http://localhost:8000
 """
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
 import os
@@ -29,7 +32,7 @@ from fastapi.staticfiles import StaticFiles
 
 import db
 from services import stt, tts, llm
-from services.prompts import order_total
+from services.prompts import scenario_of, lang_for, opener_for
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -53,13 +56,23 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Sahayak AI · Telugu Voice Agent", lifespan=lifespan)
+app = FastAPI(title="Verba — AI Voice & Chat Agents", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/")
 async def index():
     return FileResponse(str(STATIC_DIR / "index.html"))
+
+
+@app.get("/crm")
+async def crm_page():
+    return FileResponse(str(STATIC_DIR / "crm.html"))
+
+
+@app.get("/pitch")
+async def pitch_page():
+    return FileResponse(str(STATIC_DIR / "pitch.html"))
 
 
 @app.get("/config")
@@ -69,7 +82,7 @@ async def config():
     if tts._eleven_ok is None:
         await tts.probe_elevenlabs()
     return {
-        "restaurant": "Krishnapatnam",
+        "brand": "Verba",
         "llm_ok": llm.llm_available(),
         "stt": "sarvam" if stt.stt_available() else "webspeech",
         "tts": tts.active_provider(),
@@ -80,25 +93,17 @@ async def config():
     }
 
 
-@app.get("/api/bookings")
-async def bookings():
-    return {"bookings": db.recent_bookings()}
-
-
-@app.get("/api/complaints")
-async def complaints():
-    return {"complaints": db.recent_complaints()}
-
-
-@app.get("/api/orders")
-async def orders():
-    return {"orders": db.recent_orders()}
-
-
 @app.post("/api/login")
 async def api_login(password: str = Form(default="")):
-    """Admin gate — validates the access password for the demo."""
+    """Access gate — validates the password for the page."""
     return {"ok": password == ADMIN_PASSWORD}
+
+
+@app.post("/api/crm")
+async def api_crm(password: str = Form(default="")):
+    if password != ADMIN_PASSWORD:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    return {"records": db.recent_crm()}
 
 
 # One spoken acknowledgment per language, played the INSTANT the caller stops talking, masking
@@ -111,26 +116,34 @@ _FILLER_TEXTS = {
 }
 _filler_cache: dict[str, list] = {}
 
-# Caller's chosen language → Sarvam STT language_code.
+# Scenario language → Sarvam STT language_code.
 _LANG_CODE = {"english": "en-IN", "hindi": "hi-IN", "telugu": "te-IN"}
 
 
+def _scenario_lang(scenario: str, lang: str = "") -> str:
+    """The scenario decides the language; a bare lang is honoured for older clients."""
+    if scenario:
+        return lang_for(scenario)
+    return (lang or "english").lower()
+
+
 @app.post("/api/fillers")
-async def api_fillers(password: str = Form(default=""), lang: str = Form(default="english")):
+async def api_fillers(password: str = Form(default=""), scenario: str = Form(default=""),
+                      lang: str = Form(default="english")):
     if password != ADMIN_PASSWORD:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     if tts._eleven_ok is None:          # settle the provider BEFORE keying the cache
         await tts.probe_elevenlabs()
-    lang = (lang or "english").lower()
-    texts = _FILLER_TEXTS.get(lang, _FILLER_TEXTS["english"])
-    key = f"{tts.active_provider()}::{tts._voice_for(lang)}::{lang}"
+    lng = _scenario_lang(scenario, lang)
+    texts = _FILLER_TEXTS.get(lng, _FILLER_TEXTS["english"])
+    key = f"{tts.active_provider()}::{tts._voice_for(lng)}::{lng}"
     if key not in _filler_cache:
         # SEQUENTIAL on purpose: the ElevenLabs free tier allows only 2 concurrent requests,
         # and a parallel warm-up 429s. One-time cost at page load, so latency doesn't matter.
         out = []
         for t in texts:
             try:
-                a, m = await tts.synthesize(t, lang)
+                a, m = await tts.synthesize(t, lng)
                 if a:
                     out.append({"b64": base64.b64encode(a).decode("ascii"), "mime": m})
             except Exception:
@@ -141,15 +154,46 @@ async def api_fillers(password: str = Form(default=""), lang: str = Form(default
     return {"fillers": _filler_cache[key]}
 
 
+_opening_cache: dict[str, dict] = {}
+
+
+@app.post("/api/opening")
+async def api_opening(password: str = Form(default=""), scenario: str = Form(default="lead")):
+    """The agent speaks FIRST. Returns the scenario's opening line — with audio for the voice
+    scenarios (synthesized once and cached), text-only for the chat scenario."""
+    if password != ADMIN_PASSWORD:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    sc = scenario_of(scenario)
+    text = opener_for(scenario)
+    if sc["chat"]:
+        return {"text": text, "audio_b64": None, "audio_mime": None}
+    if tts._eleven_ok is None:
+        await tts.probe_elevenlabs()
+    lng = sc["lang"]
+    key = f"{tts.active_provider()}::{tts._voice_for(lng)}::{scenario}"
+    if key not in _opening_cache:
+        audio_b64, mime = None, None
+        try:
+            a, m = await tts.synthesize(text, lng)
+            if a:
+                audio_b64, mime = base64.b64encode(a).decode("ascii"), m
+        except Exception:
+            pass
+        _opening_cache[key] = {"audio_b64": audio_b64, "audio_mime": mime}
+    cached = _opening_cache[key]
+    return {"text": text, "audio_b64": cached["audio_b64"], "audio_mime": cached["audio_mime"]}
+
+
 @app.post("/api/say")
 async def api_say(text: str = Form(default=""), password: str = Form(default=""),
-                  lang: str = Form(default="english")):
+                  scenario: str = Form(default=""), lang: str = Form(default="english")):
     """TTS-only — speak a fixed line without invoking the LLM (used for no-reply nudges)."""
     if password != ADMIN_PASSWORD:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    lng = _scenario_lang(scenario, lang)
     audio_b64, mime = None, None
     try:
-        a, m = await tts.synthesize(text, lang)
+        a, m = await tts.synthesize(text, lng)
         if a:
             audio_b64, mime = base64.b64encode(a).decode("ascii"), m
     except Exception:
@@ -157,132 +201,116 @@ async def api_say(text: str = Form(default=""), password: str = Form(default="")
     return {"audio_b64": audio_b64, "audio_mime": mime}
 
 
-def _latest_for_phone(snapshot: list, phone: str) -> dict | None:
-    """Newest snapshot row whose phone matches — compared on the LAST 10 digits so
-    '+91 98765 43210' and '9876543210' are the same caller."""
-    digits = re.sub(r"\D", "", str(phone or ""))[-10:]
-    if not digits:
-        return None
-    matches = [r for r in snapshot if isinstance(r, dict)
-               and re.sub(r"\D", "", str(r.get("phone", "")))[-10:] == digits]
-    return max(matches, key=lambda r: r.get("id") or 0) if matches else None
+# What the CRM row looks like for each tool — one place that turns tool args into the
+# name / phone / summary / status the CRM page shows.
+_OUTCOME_PRETTY = {
+    "promise_to_pay": "Promise to pay",
+    "already_paid": "Says already paid",
+    "needs_time": "Needs time",
+    "dispute": "Dispute raised",
+    "callback_requested": "Officer callback",
+    "no_commitment": "No commitment",
+}
+
+
+def _crm_row(scenario: str, tool: str, args: dict) -> dict:
+    a = {k: str(v).strip() for k, v in (args or {}).items() if v is not None}
+    details = json.dumps(args or {}, ensure_ascii=False)
+    if tool == "book_callback":
+        bits = [a.get("requirement"), a.get("business"),
+                ("callback " + a["callback_time"]) if a.get("callback_time") else None,
+                ("budget " + a["budget"]) if a.get("budget") else None,
+                a.get("timeline"), a.get("notes")]
+        return {"scenario": scenario, "kind": "callback", "name": a.get("name", ""),
+                "phone": a.get("phone", ""), "summary": " · ".join(b for b in bits if b),
+                "details": details, "status": "callback booked"}
+    if tool == "log_payment_outcome":
+        outcome = _OUTCOME_PRETTY.get(a.get("outcome", ""), a.get("outcome", ""))
+        bits = [("EMI " + a["amount"]) if a.get("amount") else "EMI",
+                ("a/c " + a["loan_ref"]) if a.get("loan_ref") else None,
+                ("pays " + a["ptp_date"]) if a.get("ptp_date") else None,
+                a.get("notes")]
+        return {"scenario": scenario, "kind": "collection", "name": a.get("customer_name", ""),
+                "phone": a.get("phone", ""), "summary": " · ".join(b for b in bits if b),
+                "details": details, "status": outcome or "logged"}
+    if tool == "book_appointment":
+        bits = [a.get("service"), (a.get("date", "") + " " + a.get("time", "")).strip(),
+                a.get("notes")]
+        return {"scenario": scenario, "kind": "appointment", "name": a.get("name", ""),
+                "phone": a.get("phone", ""), "summary": " · ".join(b for b in bits if b),
+                "details": details, "status": "confirmed"}
+    return {"scenario": scenario, "kind": tool, "name": a.get("name", ""),
+            "phone": a.get("phone", ""), "summary": details[:200], "details": details,
+            "status": "new"}
+
+
+def _handlers_for(scenario: str, captured: dict, on_row=None) -> dict:
+    """Tool handlers that write the CRM row (and optionally push it, for the WS path)."""
+    async def _save(tool: str, args: dict) -> dict:
+        row = db.insert_crm(_crm_row(scenario, tool, args))
+        captured["crm"] = row
+        if on_row:
+            await on_row(row)
+        return row
+
+    return {
+        "book_callback": lambda args: _save("book_callback", args),
+        "log_payment_outcome": lambda args: _save("log_payment_outcome", args),
+        "book_appointment": lambda args: _save("book_appointment", args),
+    }
 
 
 @app.post("/api/turn")
 async def api_turn(
     text: str = Form(default=""),
     history: str = Form(default="[]"),
-    orders: str = Form(default="[]"),
-    bookings: str = Form(default="[]"),
     password: str = Form(default=""),
-    lang: str = Form(default="english"),
+    scenario: str = Form(default="lead"),
     audio: UploadFile = File(default=None),
 ):
     """Stateless turn for HTTP/serverless clients (Vercel has no WebSocket).
-    The client carries the conversation history — and a snapshot of the orders/bookings it has
-    seen, so updates still work when another serverless instance (fresh /tmp DB) gets the turn."""
+    The client carries the conversation history."""
     if password != ADMIN_PASSWORD:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
+    sc = scenario_of(scenario)
+    lng = sc["lang"]
     try:
         contents = json.loads(history) if history else []
     except Exception:
         contents = []
-    try:
-        client_orders = json.loads(orders) if orders else []
-    except Exception:
-        client_orders = []
-    try:
-        client_bookings = json.loads(bookings) if bookings else []
-    except Exception:
-        client_bookings = []
 
     user_text = (text or "").strip()
     transcript = user_text
     if audio is not None:
         wav = await audio.read()
         try:
-            transcript = await stt.transcribe_wav(wav, _LANG_CODE.get(lang.lower(), "en-IN"))
+            transcript = await stt.transcribe_wav(wav, _LANG_CODE.get(lng, "en-IN"))
         except Exception as e:
             return {"error": f"stt: {e}", "history": contents}
         user_text = transcript
     if not user_text:
         return {"error": "no input", "history": contents}
 
-    captured = {"booking": None, "complaint": None, "order": None}
-
-    async def on_booking(args):
-        captured["booking"] = db.insert_booking(args)
-        return captured["booking"]
-
-    async def on_update_booking(args):
-        row = db.update_latest_booking(
-            args.get("phone", ""), args.get("party_size"), args.get("date"),
-            args.get("time"), args.get("name"), args.get("notes"),
-        )
-        if row is None:  # this instance never saw the booking — recover from the client snapshot
-            base = _latest_for_phone(client_bookings, args.get("phone", ""))
-            if base:
-                merged = {**base}
-                for k in ("party_size", "date", "time", "name", "notes"):
-                    if args.get(k):
-                        merged[k] = args[k]
-                merged["status"] = "changed"
-                row = db.upsert_booking(merged)
-        if row:
-            captured["booking"] = row
-        return row
-
-    async def on_complaint(args):
-        captured["complaint"] = db.insert_complaint(args)
-        return captured["complaint"]
-
-    async def on_order(args):
-        captured["order"] = db.insert_order(args)
-        return captured["order"]
-
-    async def on_update_order(args):
-        row = db.update_latest_order(
-            args.get("phone", ""), args.get("items"), args.get("notes"),
-            args.get("order_type"), args.get("payment"),
-        )
-        if row is None:  # this instance never saw the order — recover from the client snapshot
-            base = _latest_for_phone(client_orders, args.get("phone", ""))
-            if base:
-                merged = {**base}
-                for k in ("items", "order_type", "payment", "notes"):
-                    if args.get(k):
-                        merged[k] = args[k]
-                if args.get("items"):
-                    merged["total"] = order_total(args["items"])
-                merged["status"] = "changed"
-                row = db.upsert_order(merged)
-        if row:
-            captured["order"] = row
-        return row
-
+    captured = {"crm": None}
     try:
-        reply = await llm.gemini_turn(
-            contents, user_text,
-            {
-                "create_booking": on_booking,
-                "update_booking": on_update_booking,
-                "log_complaint": on_complaint,
-                "create_order": on_order,
-                "update_order": on_update_order,
-            },
-            lang=lang,
-        )
+        reply = await llm.gemini_turn(contents, user_text,
+                                      _handlers_for(scenario, captured), scenario=scenario)
     except Exception as e:
         return {"error": f"llm: {e}", "transcript": transcript, "history": contents}
 
-    # Synthesize ONLY the first sentence here and hand the rest back as text — the client
-    # plays the first chunk immediately and fetches the remainder via /api/say while it plays.
-    # Cuts the rest-of-reply TTS time out of the perceived response.
+    # Chat scenario: text is the product — instant replies, no TTS spend.
+    if sc["chat"]:
+        return {"transcript": transcript, "reply": reply, "crm": captured["crm"],
+                "history": contents, "audio_b64": None, "audio_mime": None, "rest_text": None}
+
+    # Voice: synthesize ONLY the first sentence here and hand the rest back as text — the
+    # client plays the first chunk immediately and fetches the remainder via /api/say while
+    # it plays. Cuts the rest-of-reply TTS time out of the perceived response.
     chunks = _split_for_tts(reply)
     audio_b64, mime, rest_text = None, None, None
     if chunks:
         try:
-            a, m = await tts.synthesize(chunks[0], lang)
+            a, m = await tts.synthesize(chunks[0], lng)
             if a:
                 audio_b64, mime = base64.b64encode(a).decode("ascii"), m
                 if len(chunks) > 1:
@@ -293,9 +321,7 @@ async def api_turn(
     return {
         "transcript": transcript,
         "reply": reply,
-        "booking": captured["booking"],
-        "complaint": captured["complaint"],
-        "order": captured["order"],
+        "crm": captured["crm"],
         "history": contents,
         "audio_b64": audio_b64,
         "audio_mime": mime,
@@ -330,62 +356,24 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
         await _send(ws, {"type": "status", "state": "idle"})
         return
     sid = state["session_id"]
+    scenario = state.get("scenario", "lead")
+    sc = scenario_of(scenario)
     if not silent:
         await _send(ws, {"type": "transcript", "role": "user", "text": text})
     db.log_turn(sid, "user", text)
 
     await _send(ws, {"type": "status", "state": "thinking"})
 
-    async def on_booking(args: dict) -> dict:
-        row = db.insert_booking(args)
-        await _send(ws, {"type": "booking_created", "booking": row})
-        db.log_turn(sid, "tool", "booking " + json.dumps(args, ensure_ascii=False))
-        return row
+    captured = {"crm": None}
 
-    async def on_update_booking(args: dict):
-        row = db.update_latest_booking(
-            args.get("phone", ""), args.get("party_size"), args.get("date"),
-            args.get("time"), args.get("name"), args.get("notes"),
-        )
-        if row:
-            await _send(ws, {"type": "booking_created", "booking": row})
-            db.log_turn(sid, "tool", "booking_update " + json.dumps(args, ensure_ascii=False))
-        return row
-
-    async def on_complaint(args: dict) -> dict:
-        row = db.insert_complaint(args)
-        await _send(ws, {"type": "complaint_created", "complaint": row})
-        db.log_turn(sid, "tool", "complaint " + json.dumps(args, ensure_ascii=False))
-        return row
-
-    async def on_order(args: dict) -> dict:
-        row = db.insert_order(args)
-        await _send(ws, {"type": "order_created", "order": row})
-        db.log_turn(sid, "tool", "order " + json.dumps(args, ensure_ascii=False))
-        return row
-
-    async def on_update_order(args: dict):
-        row = db.update_latest_order(
-            args.get("phone", ""), args.get("items"), args.get("notes"),
-            args.get("order_type"), args.get("payment"),
-        )
-        if row:
-            await _send(ws, {"type": "order_created", "order": row})
-            db.log_turn(sid, "tool", "order_update " + json.dumps(args, ensure_ascii=False))
-        return row
+    async def on_row(row: dict):
+        await _send(ws, {"type": "crm_created", "crm": row})
+        db.log_turn(sid, "tool", "crm " + json.dumps(row, ensure_ascii=False))
 
     try:
         assistant_text = await llm.gemini_turn(
-            state["contents"],
-            text,
-            {
-                "create_booking": on_booking,
-                "update_booking": on_update_booking,
-                "log_complaint": on_complaint,
-                "create_order": on_order,
-                "update_order": on_update_order,
-            },
-            lang=state.get("lang", "english"),
+            state["contents"], text,
+            _handlers_for(scenario, captured, on_row), scenario=scenario,
         )
     except Exception as e:
         await _send(ws, {"type": "error", "where": "llm", "message": str(e), "recoverable": True})
@@ -395,13 +383,17 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
     await _send(ws, {"type": "assistant_text", "role": "assistant", "text": assistant_text})
     db.log_turn(sid, "assistant", assistant_text)
 
+    if sc["chat"]:                      # chat scenario: no TTS — instant text
+        await _send(ws, {"type": "status", "state": "idle"})
+        return
+
     await _send(ws, {"type": "status", "state": "speaking"})
     # Sentence-by-sentence, SEQUENTIAL on purpose: chunk 2 synthesizes while chunk 1 is already
     # playing in the browser, and staying at 1 concurrent request keeps the ElevenLabs free
     # tier (2-concurrent limit) from 429ing when fillers or /api/say overlap.
     for chunk in _split_for_tts(assistant_text):
         try:
-            audio, mime = await tts.synthesize(chunk, state.get("lang", "english"))
+            audio, mime = await tts.synthesize(chunk, sc["lang"])
         except Exception:
             audio, mime = None, None
         if audio:
@@ -412,8 +404,9 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
 
 async def _process_audio(ws: WebSocket, state: dict, wav: bytes):
     await _send(ws, {"type": "status", "state": "transcribing"})
+    lng = lang_for(state.get("scenario", "lead"))
     try:
-        text = await stt.transcribe_wav(wav, _LANG_CODE.get(state.get("lang", "english").lower(), "en-IN"))
+        text = await stt.transcribe_wav(wav, _LANG_CODE.get(lng, "en-IN"))
     except Exception as e:
         await _send(ws, {"type": "error", "where": "stt", "message": str(e), "recoverable": True})
         await _send(ws, {"type": "status", "state": "idle"})
@@ -427,7 +420,7 @@ async def _process_audio(ws: WebSocket, state: dict, wav: bytes):
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     await ws.accept()
-    state = {"session_id": uuid.uuid4().hex, "contents": [], "lang": "english"}
+    state = {"session_id": uuid.uuid4().hex, "contents": [], "scenario": "lead"}
     db.ensure_conversation(state["session_id"])
     try:
         while True:
@@ -451,12 +444,12 @@ async def ws_endpoint(ws: WebSocket):
                                      "message": "unauthorized", "recoverable": False})
                     await ws.close()
                     return
-                state["lang"] = (data.get("lang") or "english")
-                # client may carry its own session id; keep the server one authoritative
+                if data.get("scenario"):
+                    state["scenario"] = data["scenario"]
                 await _send(ws, {"type": "status", "state": "idle", "detail": "connected"})
             elif mtype == "turn_text":
-                if data.get("lang"):
-                    state["lang"] = data["lang"]
+                if data.get("scenario"):
+                    state["scenario"] = data["scenario"]
                 await _process_text(
                     ws, state, data.get("text", ""), silent=bool(data.get("silent"))
                 )

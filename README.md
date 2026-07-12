@@ -1,12 +1,17 @@
-# Krishnapatnam — Telugu AI Voice Receptionist (Sahayak AI demo)
+# Verba — AI Voice & Chat Agents (a Sahayak AI product)
 
-A browser voice agent that takes restaurant calls in **Telugu + English (code-mix)**,
-answers menu/hours questions, and **books tables live** — the booking appears on the page
-and is saved to a SQLite database. Built to pitch Krishnapatnam (Hyderabad).
+One app, three agents in three languages, plus a live CRM and a one-screen pitch:
 
-**Stack:** Sarvam Saaras v3 (speech-to-text) · Google Gemini 2.5 Flash (brain + booking
-tool) · ElevenLabs `eleven_v3` (voice, auto-falls back to Sarvam Bulbul) · FastAPI + SQLite.
-No telephony, no Pipecat, no ffmpeg, no Node — the browser captures 16 kHz WAV itself.
+| Route | What it shows |
+|---|---|
+| `/` | Scenario picker → **📞 Inbound lead call (English)** — Verba's own line answers, qualifies, books a callback · **💳 Payment reminder (हिंदी)** — Suvidha Finserv, a polite EMI reminder that logs the outcome · **💬 WhatsApp assistant (తెలుగు)** — Ananya Clinic chat that answers instantly and books appointments |
+| `/crm` | **Verba CRM** — every call/chat outcome writes back here live (callbacks, promises-to-pay, appointments) |
+| `/pitch` | One-screen partnership slide (`/pitch?p=PartnerName` personalises it) |
+
+**Stack:** Sarvam Saaras v3 (speech-to-text) · Google Gemini (brain + one tool per
+scenario, 12-key rotation) · ElevenLabs `eleven_v3` (voice, auto-falls back to Sarvam
+Bulbul) · FastAPI + SQLite. No telephony, no ffmpeg, no Node — the browser captures
+16 kHz WAV itself. The chat scenario is text-only (instant replies, zero TTS spend).
 
 ## Setup
 ```powershell
@@ -16,36 +21,39 @@ cd "C:\Users\HP\Claude\Projects\AI service clients\voice-agent"
 copy .env.example .env      # then open .env and paste your keys
 ```
 Fill `.env`:
-- `GEMINI_API_KEY` — required (aistudio.google.com/apikey)
-- `SARVAM_API_KEY` — Telugu speech-to-text (dashboard.sarvam.ai). Without it the page uses
-  the browser's built-in te-IN recognition (Chrome/Edge only).
-- `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` — the voice. **Telugu needs the `eleven_v3`
-  model**; if your key doesn't have it the app auto-uses Sarvam Bulbul. Get the key at
-  elevenlabs.io → Profile → API Keys; pick a voice id from elevenlabs.io → Voices.
+- `GEMINI_API_KEY` (+ optional `_2`…`_12` for rotation) — required (aistudio.google.com/apikey)
+- `SARVAM_API_KEY` — speech-to-text. Without it the page uses the browser's built-in
+  recognition (Chrome/Edge only).
+- `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID` — the voice (English/Hindi).
+  `ELEVENLABS_VOICE_ID_TE` — optional separate Telugu voice.
+- `ADMIN_PASSWORD` — the access password for the pages.
 
 ## Run
 ```powershell
 & "C:\Users\HP\AppData\Local\Programs\Python\Python313\python.exe" -m uvicorn main:app --reload --port 8000
 ```
 Open **http://localhost:8000** in Chrome/Edge (use `localhost`, not a file:// path — the mic
-needs a secure context, which localhost satisfies). Click **Start talking**, allow the mic,
-and say e.g. *"7 గంటలకి 4 మందికి table కావాలి"*. The agent asks your name + phone, confirms in
-Telugu, mentions WhatsApp, and a booking card appears.
+needs a secure context, which localhost satisfies). Pick a scenario; in the voice ones the
+**agent speaks first** (it "picks up"), in the chat one it greets and you type.
 
-You can also **type** a message (box at the bottom) to demo without a microphone or keys.
+You can also **type** in the voice scenarios (box at the bottom) to run without a microphone.
 
 ## Controls
-- **Start talking / Stop** — begin or pause listening.
-- **Restart** — clear the conversation + board for a fresh demo (saved bookings stay in the DB).
+- **📞 Start call / Stop** — begin or pause the call (the agent answers first).
+- **Restart** — clear the conversation for a fresh run (CRM rows are kept — it's a CRM).
+- **⇄ Scenarios** — back to the picker.
 - **Mic sensitivity** — raise it in a noisy room, lower it if it cuts you off.
 
-## What it does (mirrors the Sahayak "AI Voice" product)
-Table booking (name + phone, confirmation, WhatsApp note), menu & price Q&A, hours/location,
-order notes, human-handoff offer, full transcript + bookings stored in `app.db`.
+## Where the facts live (EDIT ME)
+- `services/prompts.py` → `COLLECTION_CASE` (customer, EMI amount, due date, loan ref),
+  `CLINIC` (timings, doctors, prices), the three system prompts and openers.
+- CRM rows land in `app.db` → `SELECT * FROM crm;`
 
 ## Notes / honest caveats
-- ~2.5–4 s per turn (three cloud hops). Status pills show what it's doing.
-- ElevenLabs Telugu = `eleven_v3` only; `/config` shows which voice is actually live.
-- Menu prices in `services/prompts.py` are realistic placeholders — paste the real
-  Krishnapatnam card there before an actual pitch (look for the "EDIT ME" banner).
-- Inspect the database any time: `SELECT * FROM bookings;` in `app.db`.
+- Voice turns take ~2.5–4 s (three cloud hops); the chat scenario replies near-instantly.
+- The "calls" run in the browser — there is no phone number attached yet. For a pitch,
+  run it full-screen on a phone and keep a screen recording as backup.
+- ElevenLabs Telugu/Hindi = `eleven_v3` only; `/config` shows which voice is actually live.
+- On Vercel each serverless instance has its own ephemeral DB; the CRM page also receives
+  rows live from the agent tab (BroadcastChannel + localStorage), so the write-back moment
+  never depends on which instance served the call.

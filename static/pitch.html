@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Verba × You — Partnership</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Poppins:wght@400;500;600&family=Noto+Sans+Devanagari:wght@500&family=Noto+Sans+Telugu:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F5F6FC; --card:#FFFFFF; --accent:#5A5FE0; --accent-deep:#3D42C7;
+    --deep:#23265F; --ink:#212342; --muted:#6D7194; --line:#DEE1F2;
+    --ok:#22A06B; --amber:#E8A33D; --gold:#E8B44C;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%}
+  body{background:var(--paper);color:var(--ink);
+    font-family:'Poppins','Noto Sans Devanagari','Noto Sans Telugu',system-ui,sans-serif;
+    display:flex;align-items:center;justify-content:center;padding:28px 20px}
+  .slide{max-width:920px;width:100%;text-align:center}
+  .mark{margin-bottom:14px}
+  h1{font-family:'Fraunces',serif;font-weight:700;font-size:52px;line-height:1;margin:0;color:var(--deep);letter-spacing:.01em}
+  .tagline{font-size:17px;color:var(--muted);margin-top:10px}
+  .tagline b{color:var(--accent-deep);font-weight:600}
+  .prepared{display:none;margin-top:8px;font-size:13px;color:var(--accent-deep);font-weight:600;
+    letter-spacing:.06em;text-transform:uppercase}
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:34px;text-align:left}
+  @media(max-width:760px){.cards{grid-template-columns:1fr}}
+  .c{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;
+    box-shadow:0 6px 22px rgba(25,28,90,.06);border-top:4px solid var(--accent)}
+  .c.amber{border-top-color:var(--amber)}
+  .c.green{border-top-color:var(--ok)}
+  .c .area{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .c h3{font-family:'Fraunces',serif;font-size:19px;color:var(--deep);margin:8px 0 8px}
+  .c p{font-size:13.5px;line-height:1.65;color:var(--ink);margin:0}
+  .band{margin-top:26px;background:var(--deep);border-radius:20px;padding:28px 26px;color:#EDEFFF}
+  .band h2{font-family:'Fraunces',serif;font-size:27px;margin:0;color:#fff}
+  .band h2 em{font-style:normal;color:var(--gold)}
+  .band p{font-size:14.5px;line-height:1.7;margin:10px auto 0;max-width:640px;color:#C9CDF2}
+  footer{margin-top:22px;font-size:13px;color:var(--muted)}
+  footer b{color:var(--deep)}
+</style>
+</head>
+<body>
+<div class="slide">
+  <div class="mark">
+    <svg width="64" height="64" viewBox="0 0 58 58" aria-hidden="true">
+      <circle cx="29" cy="29" r="27" fill="#23265F"/>
+      <circle cx="29" cy="29" r="27" fill="none" stroke="#5A5FE0" stroke-width="2"/>
+      <circle cx="29" cy="29" r="21" fill="none" stroke="#E8B44C" stroke-width="1" opacity=".5"/>
+      <text x="29" y="38" text-anchor="middle" font-family="Fraunces,serif" font-weight="700" font-size="26" fill="#E8B44C">V</text>
+    </svg>
+  </div>
+  <h1>Verba</h1>
+  <div class="tagline">AI voice &amp; chat agents for Indian businesses — <b>English · हिंदी · తెలుగు</b></div>
+  <div class="prepared" id="prepared"></div>
+
+  <div class="cards">
+    <div class="c">
+      <div class="area">Your focus · AI</div>
+      <h3>Agents in production, not decks</h3>
+      <p>Human-sounding agents on live calls — you just heard one pick up, qualify a lead and
+         book the callback on its own.</p>
+    </div>
+    <div class="c amber">
+      <div class="area">Your focus · BFSI — sales &amp; collection optimisation</div>
+      <h3>Vernacular collections, done politely</h3>
+      <p>Courteous EMI reminders in Hindi and regional languages — promise-to-pay, disputes and
+         callbacks captured and written to the CRM automatically.</p>
+    </div>
+    <div class="c green">
+      <div class="area">Your focus · Customer-facing apps</div>
+      <h3>WhatsApp agents that convert</h3>
+      <p>Instant answers and appointment booking in chat, 24×7, in the customer's own language —
+         no app to install, no queue.</p>
+    </div>
+  </div>
+
+  <div class="band">
+    <h2>You own the client. <em>We run the agents.</em></h2>
+    <p>White-label Verba under your brand — we build, host and support the agents; you take them
+       to your BFSI and enterprise clients. A pilot goes live in two weeks, with every call and
+       chat writing back to the client's CRM from day one.</p>
+  </div>
+
+  <footer><b>Harthik Varma</b> · Verba, a Sahayak AI product · Hyderabad · harthikvarma0@gmail.com</footer>
+</div>
+<script>
+  // /pitch?p=PartnerName → "Prepared for PartnerName"
+  const p = new URLSearchParams(location.search).get('p');
+  if(p){ const el=document.getElementById('prepared');
+         el.textContent='Prepared for '+p; el.style.display='block';
+         document.title='Verba × '+p+' — Partnership'; }
+</script>
+</body>
+</html>

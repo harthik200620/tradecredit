@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Verba CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Poppins:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600&family=Noto+Sans+Telugu:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F5F6FC; --paper2:#EAECF8; --card:#FFFFFF;
+    --accent:#5A5FE0; --accent-deep:#3D42C7;
+    --deep:#23265F; --ink:#212342; --muted:#6D7194; --line:#DEE1F2;
+    --ok:#22A06B; --amber:#E8A33D; --alert:#D9544A; --gold:#E8B44C;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%}
+  body{background:var(--paper);color:var(--ink);
+    font-family:'Poppins','Noto Sans Devanagari','Noto Sans Telugu',system-ui,sans-serif}
+  .wrap{max-width:980px;margin:0 auto;padding:22px 20px 60px}
+  header{display:flex;align-items:center;gap:14px;padding:8px 4px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .brand h1{font-family:'Fraunces',serif;font-weight:700;font-size:26px;margin:0;color:var(--deep)}
+  .brand .sub{font-size:12px;color:var(--muted);margin-top:3px}
+  .live{margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);
+    border-radius:999px;padding:7px 14px;font-size:12px;font-weight:600;color:var(--deep)}
+  .live .dot{width:9px;height:9px;border-radius:50%;background:var(--ok);
+    box-shadow:0 0 0 0 rgba(34,160,107,.5);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(34,160,107,.45)}70%{box-shadow:0 0 0 9px rgba(34,160,107,0)}100%{box-shadow:0 0 0 0 rgba(34,160,107,0)}}
+  .filters{display:flex;gap:8px;margin:16px 0 14px;flex-wrap:wrap}
+  .fchip{font-family:inherit;font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:999px;
+    padding:7px 14px;background:var(--card);color:var(--muted);cursor:pointer}
+  .fchip.on{background:var(--accent);border-color:var(--accent-deep);color:#fff}
+  .list{display:flex;flex-direction:column;gap:11px}
+  .rec{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);
+    border-radius:14px;padding:14px 16px;animation:rise .3s ease}
+  .rec.flash{animation:flash 1.6s ease}
+  @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @keyframes flash{0%{background:#FFF7E0}100%{background:var(--card)}}
+  .rec.col{border-left-color:var(--amber)}
+  .rec.apt{border-left-color:var(--ok)}
+  .rec .top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .rec .nm{font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:var(--deep)}
+  .rec .ph{font-size:13px;color:var(--muted)}
+  .rec .badge{margin-left:auto;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
+    color:#fff;background:var(--accent);border-radius:999px;padding:3px 10px;white-space:nowrap}
+  .rec.col .badge{background:var(--amber)}
+  .rec.apt .badge{background:var(--ok)}
+  .rec .sum{font-size:13.5px;color:var(--ink);margin-top:7px;background:var(--paper2);border-radius:8px;padding:8px 11px;line-height:1.55}
+  .rec .meta{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:8px}
+  .rec .meta b{color:var(--accent-deep);font-weight:600}
+  .emptybox{margin:60px auto;text-align:center;color:var(--muted);font-size:14px;line-height:1.7;max-width:420px}
+  .emptybox .big{font-family:'Fraunces',serif;font-size:20px;color:var(--deep);margin-bottom:6px}
+  /* lock */
+  .lock{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;padding:20px;background:var(--paper)}
+  .lockcard{background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:0 14px 44px rgba(25,28,90,.14);
+    padding:34px 30px;max-width:360px;width:100%;text-align:center}
+  .lockcard h2{font-family:'Fraunces',serif;color:var(--deep);margin:14px 0 2px;font-size:21px}
+  .lockcard .tag{color:var(--accent-deep);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+  .lockcard p{color:var(--muted);font-size:13px;margin:6px 0 18px}
+  .lockcard input{width:100%;font-family:inherit;font-size:15px;padding:12px 14px;border-radius:11px;border:1px solid var(--line);background:var(--paper);text-align:center}
+  .lockcard input:focus{outline:2px solid var(--gold);outline-offset:1px}
+  .lockcard button{width:100%;margin-top:12px;background:var(--accent);color:#fff;border:1px solid var(--accent-deep);
+    border-radius:11px;padding:12px;font-size:15px;font-weight:600;font-family:inherit;cursor:pointer}
+  .lockerr{color:var(--alert);font-size:12px;margin-top:10px;min-height:16px}
+  a.back{font-size:12px;color:var(--accent-deep);font-weight:600;text-decoration:none;margin-left:14px}
+  a.back:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<div id="lock" class="lock">
+  <div class="lockcard">
+    <svg width="54" height="54" viewBox="0 0 58 58" aria-hidden="true">
+      <circle cx="29" cy="29" r="27" fill="#23265F"/>
+      <circle cx="29" cy="29" r="27" fill="none" stroke="#5A5FE0" stroke-width="2"/>
+      <text x="29" y="38" text-anchor="middle" font-family="Fraunces,serif" font-weight="700" font-size="26" fill="#E8B44C">V</text>
+    </svg>
+    <div class="tag">Sahayak AI · Access</div>
+    <h2>Verba CRM</h2>
+    <p>Enter the access password to continue.</p>
+    <input id="lockpw" type="password" placeholder="Password" autocomplete="off" />
+    <button id="lockbtn">Unlock</button>
+    <div id="lockerr" class="lockerr"></div>
+  </div>
+</div>
+<div class="wrap">
+  <header>
+    <svg width="46" height="46" viewBox="0 0 58 58" aria-hidden="true">
+      <circle cx="29" cy="29" r="27" fill="#23265F"/>
+      <circle cx="29" cy="29" r="27" fill="none" stroke="#5A5FE0" stroke-width="2"/>
+      <text x="29" y="38" text-anchor="middle" font-family="Fraunces,serif" font-weight="700" font-size="24" fill="#E8B44C">V</text>
+    </svg>
+    <div class="brand">
+      <h1>Verba CRM</h1>
+      <div class="sub">Every conversation writes back here automatically — no typing, no follow-up forms.</div>
+    </div>
+    <div class="live"><span class="dot"></span>LIVE<span id="count" style="color:var(--muted);font-weight:500">· 0 records</span></div>
+    <a class="back" href="/">← Agents</a>
+  </header>
+
+  <div class="filters">
+    <button class="fchip on" data-k="all">All</button>
+    <button class="fchip" data-k="callback">Lead callbacks</button>
+    <button class="fchip" data-k="collection">Collections</button>
+    <button class="fchip" data-k="appointment">Appointments</button>
+  </div>
+
+  <div class="list" id="list">
+    <div class="emptybox" id="empty">
+      <div class="big">Waiting for the first record…</div>
+      Run any of the three agents — the moment a call or chat ends in an outcome,
+      it appears here by itself. That's the write-back.
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const KIND = {
+  callback:    {label:'Lead · Callback', cls:''},
+  collection:  {label:'Collections',    cls:'col'},
+  appointment: {label:'Appointment',    cls:'apt'},
+};
+let adminPw='', records={}, filter='all';   // records keyed by kind-id
+
+function key(r){ return (r.kind||'x')+'-'+(r.id||0); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function upsert(r, flash){
+  if(!r || !r.id || !r.kind) return;
+  const k = key(r);
+  const known = !!records[k];
+  records[k] = r;
+  if(!known || flash) render(flash ? k : null);
+}
+function render(flashKey){
+  const list=$('list');
+  const rows=Object.values(records)
+    .filter(r=>filter==='all'||r.kind===filter)
+    .sort((a,b)=> (b.created_at||'').localeCompare(a.created_at||'') || (b.id-a.id));
+  list.querySelectorAll('.rec').forEach(n=>n.remove());
+  $('empty').style.display = rows.length ? 'none' : '';
+  for(const r of rows){
+    const km=KIND[r.kind]||{label:r.kind,cls:''};
+    const d=document.createElement('div');
+    d.className='rec '+km.cls+(key(r)===flashKey?' flash':'');
+    d.innerHTML =
+      `<div class="top"><span class="nm">${esc(r.name||'—')}</span>`+
+      (r.phone?`<span class="ph">📞 ${esc(r.phone)}</span>`:'')+
+      `<span class="badge">${esc(km.label)}</span></div>`+
+      (r.summary?`<div class="sum">${esc(r.summary)}</div>`:'')+
+      `<div class="meta"><span>status: <b>${esc(r.status||'new')}</b></span>`+
+      (r.created_at?`<span>${esc(r.created_at)}</span>`:'')+`<span>#${esc(r.id)}</span></div>`;
+    list.appendChild(d);
+  }
+  const n=Object.keys(records).length;
+  $('count').textContent = '· '+n+' record'+(n===1?'':'s');
+}
+
+document.querySelectorAll('.fchip').forEach(b=>{
+  b.onclick=()=>{ filter=b.dataset.k;
+    document.querySelectorAll('.fchip').forEach(x=>x.classList.toggle('on', x===b)); render(); };
+});
+
+// Three sources, merged: (1) the agent tab broadcasts each new row instantly,
+// (2) a rolling localStorage cache survives reloads, (3) the server DB is polled.
+try{
+  new BroadcastChannel('verba-crm').onmessage = ev => upsert(ev.data, true);
+}catch(e){}
+function loadCache(){
+  try{ JSON.parse(localStorage.getItem('verba-crm-cache')||'[]').forEach(r=>upsert(r)); }catch(e){}
+}
+async function poll(){
+  try{
+    const fd=new FormData(); fd.append('password', adminPw);
+    const j=await (await fetch('/api/crm',{method:'POST',body:fd})).json();
+    (j.records||[]).forEach(r=>upsert(r));
+    render();
+  }catch(e){}
+}
+
+// access gate (same saved password as the agent page)
+async function verifyPw(pw){
+  try{
+    const fd=new FormData(); fd.append('password', pw);
+    const j=await (await fetch('/api/login',{method:'POST',body:fd})).json();
+    return !!j.ok;
+  }catch(e){ return false; }
+}
+async function boot(){
+  const saved=localStorage.getItem('kpw')||'';
+  if(saved && await verifyPw(saved)){ start(saved); return; }
+  $('lock').style.display='flex'; setTimeout(()=>$('lockpw').focus(),60);
+}
+async function unlock(){
+  const pw=$('lockpw').value.trim(); if(!pw) return;
+  $('lockerr').textContent='Checking…';
+  if(await verifyPw(pw)){ localStorage.setItem('kpw',pw); $('lock').style.display='none'; start(pw); }
+  else { $('lockerr').textContent='Wrong password. Try again.'; $('lockpw').select(); }
+}
+$('lockbtn').onclick=unlock;
+$('lockpw').addEventListener('keydown',e=>{ if(e.key==='Enter') unlock(); });
+function start(pw){
+  adminPw=pw;
+  loadCache(); render();
+  poll(); setInterval(poll, 4000);
+}
+boot();
+</script>
+</body>
+</html>

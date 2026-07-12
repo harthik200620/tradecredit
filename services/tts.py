@@ -169,14 +169,17 @@ async def _elevenlabs(text: str, lang: str = "english") -> tuple[bytes | None, s
     raise RuntimeError(f"ElevenLabs failed: {last_detail}")
 
 
-async def _sarvam(text: str) -> tuple[bytes | None, str | None]:
+_SARVAM_LANG = {"english": "en-IN", "hindi": "hi-IN", "telugu": "te-IN"}
+
+
+async def _sarvam(text: str, lang: str = "english") -> tuple[bytes | None, str | None]:
     if not SARVAM_KEY:
         return None, None
     url = "https://api.sarvam.ai/text-to-speech"
     headers = {"api-subscription-key": SARVAM_KEY, "Content-Type": "application/json"}
     body = {
         "inputs": [text[:480]],  # Bulbul caps input length
-        "target_language_code": "te-IN",
+        "target_language_code": _SARVAM_LANG.get((lang or "").lower(), "en-IN"),
         "model": SARVAM_TTS_MODEL,
         "speaker": SARVAM_TTS_SPEAKER,
     }
@@ -209,6 +212,6 @@ async def synthesize(text: str, lang: str = "english") -> tuple[bytes | None, st
 
     # Fallback / explicit Sarvam
     try:
-        return await _sarvam(text)
+        return await _sarvam(text, lang)
     except Exception:
         return None, None

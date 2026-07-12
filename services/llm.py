@@ -1,9 +1,9 @@
-"""The agent brain: Google Gemini 2.5 Flash with function-calling.
+"""The agent brain: Google Gemini with function-calling, scenario-aware.
 
-gemini_turn() appends the user's utterance to the running conversation, calls Gemini, and
-if the model invokes a tool (create_booking / log_complaint) it runs the matching handler
-(which writes to the DB and pushes the row to the page), feeds the result back to Gemini, and
-returns the model's spoken reply. `contents` is mutated in place to persist history.
+gemini_turn() appends the user's utterance to the running conversation, calls Gemini with the
+active scenario's system prompt + single tool (book_callback / log_payment_outcome /
+book_appointment), runs the matching handler (which writes the CRM row and pushes it to the
+page), and returns the agent's reply. `contents` is mutated in place to persist history.
 """
 from __future__ import annotations
 
@@ -14,14 +14,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from . import _http
-from .prompts import (
-    build_system_prompt,
-    CREATE_BOOKING_TOOL,
-    UPDATE_BOOKING_TOOL,
-    LOG_COMPLAINT_TOOL,
-    CREATE_ORDER_TOOL,
-    UPDATE_ORDER_TOOL,
-)
+from .prompts import build_system_prompt, tools_for, lang_for, COLLECTION_CASE, CLINIC_HOURS
 
 def _clean(name: str, default: str = "") -> str:
     """Read an env var, removing BOM/zero-width chars plus quotes/whitespace."""
@@ -55,163 +48,84 @@ _KEYS = _load_keys()
 _key_idx = 0   # round-robins one step per request (spreads load) + advances on quota/invalid
 
 # Sanitize the model: fall back to a known-good id if the env value is empty or garbled.
+# "gemini-flash-lite-latest" is Google's rolling alias — pinned ids (e.g. 2.5-flash-lite) get
+# retired for NEWER accounts while older ones keep them, so with 12 keys from mixed-age
+# accounts only the alias works everywhere.
 _raw_model = _clean("GEMINI_MODEL")
-GEMINI_MODEL = _raw_model if re.fullmatch(r"gemini-[A-Za-z0-9.\-]+", _raw_model) else "gemini-2.5-flash-lite"
+GEMINI_MODEL = _raw_model if re.fullmatch(r"gemini-[A-Za-z0-9.\-]+", _raw_model) else "gemini-flash-lite-latest"
 _URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 # Fields each tool needs before it may fire; the server enforces this even if the model rushes.
 _REQUIRED_BY_TOOL = {
-    "create_booking": ("name", "phone", "party_size", "date", "time"),
-    "update_booking": ("phone",),
-    "log_complaint": ("name", "phone", "issue"),
-    "create_order": ("name", "phone", "items"),
-    "update_order": ("phone",),
+    "book_callback": ("name", "phone", "requirement", "callback_time"),
+    "log_payment_outcome": ("outcome",),
+    "book_appointment": ("name", "phone", "service", "date", "time"),
 }
-_SUCCESS_MSG = {
-    "create_booking": "Booking saved. Now warmly confirm to the customer in spoken Telugu and "
-    "mention the WhatsApp confirmation.",
-    "log_complaint": "Complaint logged. Apologise warmly in Telugu, then tell the customer a "
-    "WhatsApp message is coming and ask them to send a photo of the problem there, and that the "
-    "team will contact them.",
-    "create_order": "Order placed. In Telugu: read the items back; if dine-in/pickup say it'll "
-    "be ready in about ముప్పై నిమిషాల్లో, if delivery say updates come on WhatsApp; then confirm "
-    "the payment they chose — if prepaid say the WhatsApp payment link is coming, if cod say they "
-    "can pay cash when it arrives. Do NOT state a rupee total.",
-    "update_order": "Order updated. Confirm the change warmly in Telugu with the new total in "
-    "Telugu words + రూపాయలు.",
-}
-# Spoken even if the follow-up generation fails (e.g. Gemini 429) AFTER the tool already saved.
-_FALLBACK_CONFIRM = {
-    "create_booking": "Table book అయ్యింది అండి 🙏 Confirmation details WhatsApp లో పంపిస్తాను, ధన్యవాదాలు!",
-    "log_complaint": "చాలా క్షమించండి అండి… మీకు WhatsApp లో message వస్తుంది, ఆ photo అక్కడ పంపండి, మా team త్వరగా మిమ్మల్ని contact చేస్తుంది.",
-    "create_order": "మీ order తీసుకున్నాను అండి 🙏 Payment link WhatsApp లో పంపిస్తాను, దాని ద్వారా pay చేయొచ్చు లేదా order వచ్చినప్పుడు cash on delivery కూడా చేయొచ్చు. ధన్యవాదాలు!",
-    "update_order": "మీ order update చేశాను అండి 🙏 కొత్త details WhatsApp లో పంపిస్తాను.",
-}
-
-
-_PARTY_TE = {1: "ఒక్కరికి", 2: "ఇద్దరికి", 3: "ముగ్గురికి", 4: "నలుగురికి", 5: "ఐదుగురికి",
-             6: "ఆరుగురికి", 7: "ఏడుగురికి", 8: "ఎనిమిది మందికి", 9: "తొమ్మిది మందికి",
-             10: "పది మందికి"}
-
-
-def _party_word(party: int, lang: str) -> str:
-    if not party:
-        return ""
-    if lang == "telugu":
-        return _PARTY_TE.get(party, f"{party} మందికి")
-    return str(party)
 
 
 def _reask(lang: str) -> str:
-    """Generic 'sorry, could you say that again?' in the caller's language."""
+    """Generic 'sorry, could you say that again?' in the scenario's language."""
     return {
         "telugu": "క్షమించండి అండి, ఒక్కసారి మళ్ళీ చెప్తారా?",
-        "hindi": "माफ़ कीजिए, एक बार फिर बता दीजिए?",
+        "hindi": "माफ़ कीजिए जी, एक बार फिर बता दीजिए?",
     }.get(lang, "Sorry, could you say that again?")
 
 
 def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") -> str:
-    """Tailored spoken confirmation for a successful tool call, IN THE CALLER'S LANGUAGE (also
-    reused as the fallback if a follow-up generation returns empty). Built locally from the tool
-    args, so it is instant and never needs a second Gemini call."""
+    """Tailored confirmation for a successful tool call, in the scenario's language (also the
+    fallback if a follow-up generation fails AFTER the tool already saved). Built locally from
+    the tool args, so it is instant and never needs a second Gemini call."""
     a = args or {}
-    lang = (lang or "english").lower()
-    if lang not in ("english", "hindi", "telugu"):
-        lang = "english"
     name = str(a.get("name") or "").strip()
-    try:
-        party = int(a.get("party_size") or 0)
-    except (TypeError, ValueError):
-        party = 0
-    pw = _party_word(party, lang)
 
-    if tool in ("create_booking", "update_booking"):
-        upd = tool == "update_booking"
-        if lang == "telugu":
-            who = f"{name} గారు, " if name else ""
-            if upd:
-                mid = f"ఇప్పుడు {pw} — " if pw else ""
-                return f"{mid}మీ booking update చేశాను అండి. కొత్త details WhatsApp లో పంపిస్తాను 🙏"
-            mid = f"{pw} " if pw else ""
-            return f"{who}{mid}మీ table book అయ్యింది అండి! Details అన్నీ WhatsApp లో పంపిస్తాను 🙏"
-        if lang == "hindi":
-            who = f"{name} जी, " if name else ""
-            if upd:
-                mid = f"अब {pw} लोगों के लिए " if pw else ""
-                return f"{mid}आपकी बुकिंग अपडेट कर दी है। नई डिटेल्स WhatsApp पर भेज देती हूँ 🙏"
-            mid = f"{pw} लोगों के लिए " if pw else ""
-            return f"{who}{mid}आपकी टेबल बुक हो गई है! सारी डिटेल्स WhatsApp पर भेज देती हूँ 🙏"
+    if tool == "book_callback":
         who = f"{name}, " if name else ""
-        if upd:
-            mid = f" to {pw} guests" if pw else ""
-            return f"Done — your reservation is updated{mid}. I'll send the new details on WhatsApp 🙏"
-        mid = f"for {pw} " if pw else ""
-        return f"{who}your table {mid}is booked! I'll send all the details on WhatsApp 🙏"
+        when = str(a.get("callback_time") or "").strip()
+        whenln = f" for {when}" if when else ""
+        return (f"Perfect, {who}your callback is booked{whenln} — Harthik from Verba will call "
+                f"you then. You'll get a WhatsApp confirmation right away. Thanks for calling Verba!")
 
-    if tool in ("create_order", "update_order"):
-        items = str(a.get("items") or "").strip()
-        ot = (a.get("order_type") or "").lower()
-        pay = (a.get("payment") or "").lower()
-        upd = tool == "update_order"
-        if lang == "telugu":
-            if upd:
-                it = f" — ఇప్పుడు {items}" if items else ""
-                return f"మీ order update చేశాను అండి{it}. కొత్త details WhatsApp లో పంపిస్తాను 🙏"
-            who = f"{name} గారు, " if name else ""
-            read = f"మీ {items} order తీసుకున్నాను అండి. " if items else "మీ order తీసుకున్నాను అండి. "
-            ready = ("సుమారు ముప్పై నిమిషాల్లో ready అవుతుంది. " if ot in ("dinein", "pickup")
-                     else "Delivery updates WhatsApp లో పంపిస్తాను. ")
-            payln = ("Order వచ్చినప్పుడు cash ఇవ్వొచ్చు. ధన్యవాదాలు! 🙏" if pay == "cod"
-                     else "Payment link WhatsApp లో పంపిస్తాను. ధన్యవాదాలు! 🙏" if pay == "prepaid"
-                     else "Payment link WhatsApp లో వస్తుంది, లేదా order వచ్చినప్పుడు cash చేయొచ్చు. ధన్యవాదాలు! 🙏")
-            return who + read + ready + payln
-        if lang == "hindi":
-            if upd:
-                it = f" — अब {items}" if items else ""
-                return f"आपका ऑर्डर अपडेट कर दिया है{it}। नई डिटेल्स WhatsApp पर भेज देती हूँ 🙏"
-            who = f"{name} जी, " if name else ""
-            read = f"आपका {items} ऑर्डर ले लिया है। " if items else "आपका ऑर्डर ले लिया है। "
-            ready = ("करीब तीस मिनट में तैयार हो जाएगा। " if ot in ("dinein", "pickup")
-                     else "डिलीवरी अपडेट्स WhatsApp पर भेजती रहूँगी। ")
-            payln = ("ऑर्डर आने पर कैश दे सकते हैं। धन्यवाद! 🙏" if pay == "cod"
-                     else "पेमेंट लिंक WhatsApp पर भेज देती हूँ। धन्यवाद! 🙏" if pay == "prepaid"
-                     else "पेमेंट लिंक WhatsApp पर आएगा, या ऑर्डर आने पर कैश दे सकते हैं। धन्यवाद! 🙏")
-            return who + read + ready + payln
-        if upd:
-            it = f" — now {items}" if items else ""
-            return f"Done — your order is updated{it}. I'll send the new details on WhatsApp 🙏"
-        who = f"{name}, " if name else ""
-        read = f"I've got your order — {items}. " if items else "I've got your order. "
-        ready = ("It'll be ready in about thirty minutes. " if ot in ("dinein", "pickup")
-                 else "We'll share delivery updates on WhatsApp. ")
-        payln = ("You can pay cash when it arrives. Thank you! 🙏" if pay == "cod"
-                 else "I'll send a payment link on WhatsApp. Thank you! 🙏" if pay == "prepaid"
-                 else "I'll send a payment link on WhatsApp, or pay cash on delivery. Thank you! 🙏")
-        return who + read + ready + payln
+    if tool == "log_payment_outcome":
+        outcome = str(a.get("outcome") or "").strip().lower()
+        ptp = str(a.get("ptp_date") or "").strip()
+        if outcome == "promise_to_pay":
+            dt = f" {ptp} को" if ptp else ""
+            return (f"बहुत बढ़िया जी, मैंने नोट कर लिया है —{dt} पेमेंट। पेमेंट लिंक अभी WhatsApp पर "
+                    "भेज रही हूँ। धन्यवाद, आपका दिन शुभ हो! 🙏")
+        if outcome == "already_paid":
+            return ("जी, धन्यवाद! मैंने नोट कर लिया है — हमारी टीम पेमेंट वेरीफाई कर लेगी। कोई भी "
+                    "मदद चाहिए हो तो WhatsApp पर मैसेज कर दीजिए। 🙏")
+        if outcome == "needs_time":
+            dt = f"आप {ptp} तक कर दीजिएगा — " if ptp else ""
+            return (f"कोई बात नहीं जी, मैं समझती हूँ। {dt}पेमेंट लिंक WhatsApp पर रहेगा, जब सुविधा "
+                    "हो कर दीजिएगा। धन्यवाद! 🙏")
+        if outcome == "dispute":
+            return ("मुझे खेद है जी — मैंने आपकी बात नोट कर ली है, हमारे अधिकारी जल्द ही आपसे संपर्क "
+                    "करेंगे। धन्यवाद, आपका दिन शुभ हो। 🙏")
+        if outcome == "callback_requested":
+            return "ज़रूर जी, हमारे अधिकारी आपको कॉल कर लेंगे। धन्यवाद, आपका दिन शुभ हो! 🙏"
+        return ("ठीक है जी, मैंने नोट कर लिया है। पेमेंट लिंक WhatsApp पर भेज रही हूँ, जब सुविधा हो "
+                "कर दीजिएगा। धन्यवाद! 🙏")
 
-    if tool == "log_complaint":
-        if lang == "telugu":
-            who = f"{name} గారు, " if name else ""
-            return (who + "చాలా క్షమించండి అండి… మీకు WhatsApp లో message వస్తుంది, ఆ photo అక్కడ "
-                    "పంపండి, మా team త్వరగా మిమ్మల్ని contact చేస్తుంది.")
-        if lang == "hindi":
-            who = f"{name} जी, " if name else ""
-            return (who + "इसके लिए बहुत खेद है… आपको WhatsApp पर मैसेज आएगा, कृपया वहाँ फ़ोटो भेज "
-                    "दीजिए, हमारी टीम जल्दी आपसे संपर्क करेगी।")
-        who = f"{name}, " if name else ""
-        return (who + "I'm so sorry about that… you'll get a WhatsApp message — please send a photo "
-                "of the issue there, and our team will contact you right away.")
+    if tool == "book_appointment":
+        who = f"{name} గారు, " if name else ""
+        service = str(a.get("service") or "appointment").strip()
+        d, t = str(a.get("date") or "").strip(), str(a.get("time") or "").strip()
+        when = f"{d} {t}".strip()
+        whenln = f" {when} కి" if when else ""
+        return (f"{who}మీ {service} appointment{whenln} confirm అయ్యింది! ✅ Confirmation "
+                "WhatsApp లో వచ్చేస్తుంది. ధన్యవాదాలు 🙏")
 
-    return {"telugu": "సరే అండి, అయ్యింది.", "hindi": "ठीक है, हो गया।"}.get(lang, "Done.")
+    return {"telugu": "సరే అండి, అయ్యింది.", "hindi": "ठीक है जी, हो गया।"}.get(lang, "Done.")
 
 
 _JUNK_NAMES = {"n/a", "na", "none", "null", "unknown", "customer", "guest", "test", "xxx", "abc"}
 
 
 def _validate_args(tool: str, args: dict) -> str | None:
-    """Deterministic guards the model can't rush past: no bookings in the past, no invented
+    """Deterministic guards the model can't rush past: no appointments in the past, no invented
     placeholder names, no half-heard phone numbers. Returns an error message or None."""
-    if tool in ("create_booking", "update_booking"):
+    if tool == "book_appointment":
         d, t = str(args.get("date") or ""), str(args.get("time") or "")
         if d and t:
             try:
@@ -219,17 +133,22 @@ def _validate_args(tool: str, args: dict) -> str | None:
                 if when < datetime.now(_IST):
                     return (f"REJECTED: {d} {t} is already in the past — right now it is "
                             f"{_today()}. Tell the customer warmly that this time has already "
-                            "passed today and ask if tomorrow at the same time works.")
+                            "passed and offer the nearest upcoming slot.")
+                open_h, close_h = CLINIC_HOURS["sunday" if when.weekday() == 6 else "weekday"]
+                if not (open_h <= when.hour < close_h):
+                    return (f"REJECTED: {t} on {d} is OUTSIDE clinic hours (Mon–Sat 10am–8pm, "
+                            "Sunday only 10am–1pm). Tell the customer warmly which hours apply "
+                            "to that day and offer the nearest slot inside the timings.")
             except ValueError:
                 pass
-    if tool in ("create_booking", "create_order", "log_complaint"):
+    if tool in ("book_callback", "book_appointment"):
         nm = str(args.get("name") or "").strip()
         if len(nm) < 2 or nm.lower() in _JUNK_NAMES:
-            return ("Invalid name — you must ASK the customer for their real name. Never invent "
+            return ("Invalid name — you must ASK the caller for their real name. Never invent "
                     "one or use a placeholder.")
         digits = re.sub(r"\D", "", str(args.get("phone") or ""))
         if len(digits) < 10:
-            return ("Phone number incomplete — ask the customer for their full 10-digit mobile "
+            return ("Phone number incomplete — ask the caller for their full 10-digit mobile "
                     "number before proceeding.")
     return None
 
@@ -252,8 +171,9 @@ def _today() -> str:
 
 
 def _should_rotate(status: int, text: str) -> bool:
-    """Rotate to the next key on quota (429) or key-permission errors."""
-    if status == 429:
+    """Rotate to the next key on quota (429), key-permission errors, or a per-key model
+    retirement (404 'no longer available to new users' — other keys may still have it)."""
+    if status in (429, 404):
         return True
     if status in (400, 403):
         t = (text or "").upper()
@@ -261,29 +181,19 @@ def _should_rotate(status: int, text: str) -> bool:
     return False
 
 
-async def _generate(contents: list, lang: str = "english") -> dict:
+async def _generate(contents: list, scenario: str = "lead") -> dict:
     global _key_idx
     if not _KEYS:
         raise RuntimeError("No Gemini API key set")
     body = {
-        "systemInstruction": {"parts": [{"text": build_system_prompt(_today(), lang)}]},
+        "systemInstruction": {"parts": [{"text": build_system_prompt(_today(), scenario)}]},
         "contents": contents,
-        "tools": [
-            {
-                "functionDeclarations": [
-                    CREATE_BOOKING_TOOL,
-                    UPDATE_BOOKING_TOOL,
-                    LOG_COMPLAINT_TOOL,
-                    CREATE_ORDER_TOOL,
-                    UPDATE_ORDER_TOOL,
-                ]
-            }
-        ],
+        "tools": [{"functionDeclarations": tools_for(scenario)}],
         "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
         # Replies are 1-2 sentences; a tight cap + thinking off keeps generation fast.
         "generationConfig": {"temperature": 0.7, "maxOutputTokens": 300},
     }
-    if "2.5" in GEMINI_MODEL:
+    if "2.5" in GEMINI_MODEL or GEMINI_MODEL.endswith("-latest"):
         body["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
     url = _URL.format(model=GEMINI_MODEL)
     last_err = None
@@ -306,18 +216,19 @@ async def _generate(contents: list, lang: str = "english") -> dict:
     raise RuntimeError("All Gemini keys exhausted — " + (last_err or "quota/invalid"))
 
 
-async def gemini_turn(contents: list, user_text: str, handlers: dict, lang: str = "english") -> str:
+async def gemini_turn(contents: list, user_text: str, handlers: dict, scenario: str = "lead") -> str:
     """Run one customer turn.
 
-    handlers: {tool_name: async fn(args)->saved_row_dict}. Returns the assistant's spoken text.
-    `lang` (english/hindi/telugu) is the language the caller chose at the start of the call.
+    handlers: {tool_name: async fn(args)->saved_row_dict}. Returns the agent's reply text.
+    `scenario` (lead/collections/clinic) selects the persona, language and tool set.
     """
+    lang = lang_for(scenario)
     contents.append({"role": "user", "parts": [{"text": user_text}]})
     last_tool, last_args = None, None
 
     for _ in range(5):  # allow a couple of tool round-trips
         try:
-            data = await _generate(contents, lang)
+            data = await _generate(contents, scenario)
         except Exception:
             # If a tool already saved this turn, give a graceful spoken confirmation instead
             # of surfacing a raw error (e.g. when the follow-up call hits a Gemini 429).
@@ -342,6 +253,10 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict, lang: str 
         if fcall and fcall.get("name") in handlers:
             name = fcall["name"]
             args = dict(fcall.get("args") or {})
+            if name == "log_payment_outcome":   # the case facts are known — backfill defaults
+                args.setdefault("customer_name", COLLECTION_CASE["customer"])
+                args.setdefault("loan_ref", COLLECTION_CASE["loan_ref"])
+                args.setdefault("amount", COLLECTION_CASE["amount"])
             missing = [k for k in _REQUIRED_BY_TOOL.get(name, ()) if not args.get(k)]
             if missing:
                 response = {
@@ -364,8 +279,8 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict, lang: str 
             if row is None:
                 response = {
                     "status": "error",
-                    "message": "Could not find a matching record. Tell the customer politely "
-                    "in their language and offer to help (e.g. take a fresh booking or order).",
+                    "message": "Could not save the record. Apologise briefly in the caller's "
+                    "language and offer to note the details again.",
                 }
                 contents.append({"role": "user",
                                  "parts": [{"functionResponse": {"name": name, "response": response}}]})
@@ -373,7 +288,7 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict, lang: str 
 
             # SUCCESS — speak a tailored confirmation built locally and SKIP the second Gemini
             # call (flash-lite usually returns empty text here anyway). Halves the LLM latency
-            # and quota on every booking / order / complaint turn.
+            # and quota on every tool turn.
             last_tool, last_args = name, args
             contents.append({"role": "user", "parts": [{"functionResponse": {
                 "name": name, "response": {"status": "success", "id": row.get("id")}}}]})
