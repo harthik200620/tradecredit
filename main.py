@@ -32,7 +32,7 @@ from fastapi.staticfiles import StaticFiles
 
 import db
 from services import stt, tts, llm
-from services.prompts import scenario_of, lang_for, opener_for
+from services.prompts import scenario_of, norm_lang, opener_for
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -116,25 +116,18 @@ _FILLER_TEXTS = {
 }
 _filler_cache: dict[str, list] = {}
 
-# Scenario language → Sarvam STT language_code.
+# Chosen language → Sarvam STT language_code.
 _LANG_CODE = {"english": "en-IN", "hindi": "hi-IN", "telugu": "te-IN"}
-
-
-def _scenario_lang(scenario: str, lang: str = "") -> str:
-    """The scenario decides the language; a bare lang is honoured for older clients."""
-    if scenario:
-        return lang_for(scenario)
-    return (lang or "english").lower()
 
 
 @app.post("/api/fillers")
 async def api_fillers(password: str = Form(default=""), scenario: str = Form(default=""),
-                      lang: str = Form(default="english")):
+                      lang: str = Form(default="")):
     if password != ADMIN_PASSWORD:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     if tts._eleven_ok is None:          # settle the provider BEFORE keying the cache
         await tts.probe_elevenlabs()
-    lng = _scenario_lang(scenario, lang)
+    lng = norm_lang(lang, scenario)
     texts = _FILLER_TEXTS.get(lng, _FILLER_TEXTS["english"])
     key = f"{tts.active_provider()}::{tts._voice_for(lng)}::{lng}"
     if key not in _filler_cache:
@@ -158,19 +151,20 @@ _opening_cache: dict[str, dict] = {}
 
 
 @app.post("/api/opening")
-async def api_opening(password: str = Form(default=""), scenario: str = Form(default="lead")):
-    """The agent speaks FIRST. Returns the scenario's opening line — with audio for the voice
-    scenarios (synthesized once and cached), text-only for the chat scenario."""
+async def api_opening(password: str = Form(default=""), scenario: str = Form(default="lead"),
+                      lang: str = Form(default="")):
+    """The agent speaks FIRST. Returns the scenario's opening line in the chosen language —
+    with audio for the voice scenarios (synthesized once and cached), text-only for chat."""
     if password != ADMIN_PASSWORD:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     sc = scenario_of(scenario)
-    text = opener_for(scenario)
+    lng = norm_lang(lang, scenario)
+    text = opener_for(scenario, lng)
     if sc["chat"]:
         return {"text": text, "audio_b64": None, "audio_mime": None}
     if tts._eleven_ok is None:
         await tts.probe_elevenlabs()
-    lng = sc["lang"]
-    key = f"{tts.active_provider()}::{tts._voice_for(lng)}::{scenario}"
+    key = f"{tts.active_provider()}::{tts._voice_for(lng)}::{scenario}::{lng}"
     if key not in _opening_cache:
         audio_b64, mime = None, None
         try:
@@ -186,11 +180,11 @@ async def api_opening(password: str = Form(default=""), scenario: str = Form(def
 
 @app.post("/api/say")
 async def api_say(text: str = Form(default=""), password: str = Form(default=""),
-                  scenario: str = Form(default=""), lang: str = Form(default="english")):
+                  scenario: str = Form(default=""), lang: str = Form(default="")):
     """TTS-only — speak a fixed line without invoking the LLM (used for no-reply nudges)."""
     if password != ADMIN_PASSWORD:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
-    lng = _scenario_lang(scenario, lang)
+    lng = norm_lang(lang, scenario)
     audio_b64, mime = None, None
     try:
         a, m = await tts.synthesize(text, lng)
@@ -266,6 +260,7 @@ async def api_turn(
     history: str = Form(default="[]"),
     password: str = Form(default=""),
     scenario: str = Form(default="lead"),
+    lang: str = Form(default=""),
     audio: UploadFile = File(default=None),
 ):
     """Stateless turn for HTTP/serverless clients (Vercel has no WebSocket).
@@ -273,7 +268,7 @@ async def api_turn(
     if password != ADMIN_PASSWORD:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     sc = scenario_of(scenario)
-    lng = sc["lang"]
+    lng = norm_lang(lang, scenario)
     try:
         contents = json.loads(history) if history else []
     except Exception:
@@ -294,7 +289,8 @@ async def api_turn(
     captured = {"crm": None}
     try:
         reply = await llm.gemini_turn(contents, user_text,
-                                      _handlers_for(scenario, captured), scenario=scenario)
+                                      _handlers_for(scenario, captured),
+                                      scenario=scenario, lang=lng)
     except Exception as e:
         return {"error": f"llm: {e}", "transcript": transcript, "history": contents}
 
@@ -358,6 +354,7 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
     sid = state["session_id"]
     scenario = state.get("scenario", "lead")
     sc = scenario_of(scenario)
+    lng = norm_lang(state.get("lang", ""), scenario)
     if not silent:
         await _send(ws, {"type": "transcript", "role": "user", "text": text})
     db.log_turn(sid, "user", text)
@@ -373,7 +370,7 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
     try:
         assistant_text = await llm.gemini_turn(
             state["contents"], text,
-            _handlers_for(scenario, captured, on_row), scenario=scenario,
+            _handlers_for(scenario, captured, on_row), scenario=scenario, lang=lng,
         )
     except Exception as e:
         await _send(ws, {"type": "error", "where": "llm", "message": str(e), "recoverable": True})
@@ -393,7 +390,7 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
     # tier (2-concurrent limit) from 429ing when fillers or /api/say overlap.
     for chunk in _split_for_tts(assistant_text):
         try:
-            audio, mime = await tts.synthesize(chunk, sc["lang"])
+            audio, mime = await tts.synthesize(chunk, lng)
         except Exception:
             audio, mime = None, None
         if audio:
@@ -404,7 +401,7 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
 
 async def _process_audio(ws: WebSocket, state: dict, wav: bytes):
     await _send(ws, {"type": "status", "state": "transcribing"})
-    lng = lang_for(state.get("scenario", "lead"))
+    lng = norm_lang(state.get("lang", ""), state.get("scenario", "lead"))
     try:
         text = await stt.transcribe_wav(wav, _LANG_CODE.get(lng, "en-IN"))
     except Exception as e:
@@ -420,7 +417,7 @@ async def _process_audio(ws: WebSocket, state: dict, wav: bytes):
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     await ws.accept()
-    state = {"session_id": uuid.uuid4().hex, "contents": [], "scenario": "lead"}
+    state = {"session_id": uuid.uuid4().hex, "contents": [], "scenario": "lead", "lang": ""}
     db.ensure_conversation(state["session_id"])
     try:
         while True:
@@ -446,10 +443,14 @@ async def ws_endpoint(ws: WebSocket):
                     return
                 if data.get("scenario"):
                     state["scenario"] = data["scenario"]
+                if data.get("lang"):
+                    state["lang"] = data["lang"]
                 await _send(ws, {"type": "status", "state": "idle", "detail": "connected"})
             elif mtype == "turn_text":
                 if data.get("scenario"):
                     state["scenario"] = data["scenario"]
+                if data.get("lang"):
+                    state["lang"] = data["lang"]
                 await _process_text(
                     ws, state, data.get("text", ""), silent=bool(data.get("silent"))
                 )

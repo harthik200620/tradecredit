@@ -123,7 +123,11 @@
   .scn .tx{flex:1 1 auto;min-width:0}
   .scn .tx b{display:block;font-family:'Fraunces',serif;font-size:15px;color:var(--green-deep)}
   .scn .tx small{display:block;color:var(--muted);font-size:12px;line-height:1.45;margin-top:2px;font-weight:400}
-  .scn .chip{flex:0 0 auto;font-size:11px;font-weight:600;background:var(--paper2);color:var(--copper-deep);border-radius:999px;padding:4px 10px}
+  .scn .chips{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
+  .scn .chip{flex:0 0 auto;font-size:11px;font-weight:600;background:var(--paper2);color:var(--muted);
+    border:1px solid transparent;border-radius:999px;padding:4px 11px;transition:border-color .12s,color .12s}
+  .scn .chip:hover{border-color:var(--copper);color:var(--copper-deep);background:#fff}
+  .scn .chip.on{color:var(--copper-deep);border-color:var(--copper);background:#fff}
   .scnlinks{margin-top:16px;font-size:12px;color:var(--muted)}
   .scnlinks a{color:var(--copper-deep);font-weight:600;text-decoration:none}
   .scnlinks a:hover{text-decoration:underline}
@@ -172,22 +176,26 @@
     <h2>Three agents, three languages</h2>
     <p>Pick one — every outcome lands in the CRM, live.</p>
     <div class="scns">
-      <button class="scn" data-scene="lead">
+      <button class="scn" data-scene="lead" data-default="english">
         <span class="ic">📞</span>
-        <span class="tx"><b>Inbound lead call</b><small>Verba answers its own line — qualifies the caller, books the callback.</small></span>
-        <span class="chip">English</span>
+        <span class="tx"><b>Inbound lead call</b><small>Verba answers its own line — qualifies the caller, books the callback.</small>
+          <span class="chips"><span class="chip on" data-lang="english">English</span><span class="chip" data-lang="hindi">हिंदी</span><span class="chip" data-lang="telugu">తెలుగు</span></span>
+        </span>
       </button>
-      <button class="scn" data-scene="collections">
+      <button class="scn" data-scene="collections" data-default="hindi">
         <span class="ic">💳</span>
-        <span class="tx"><b>Payment reminder</b><small>Suvidha Finserv — a polite EMI reminder that logs the outcome.</small></span>
-        <span class="chip">हिंदी</span>
+        <span class="tx"><b>Payment reminder</b><small>Suvidha Finserv — a polite EMI reminder that logs the outcome.</small>
+          <span class="chips"><span class="chip" data-lang="english">English</span><span class="chip on" data-lang="hindi">हिंदी</span><span class="chip" data-lang="telugu">తెలుగు</span></span>
+        </span>
       </button>
-      <button class="scn" data-scene="clinic">
+      <button class="scn" data-scene="clinic" data-default="telugu">
         <span class="ic">💬</span>
-        <span class="tx"><b>WhatsApp assistant</b><small>Ananya Clinic — instant answers, books the appointment in chat.</small></span>
-        <span class="chip">తెలుగు</span>
+        <span class="tx"><b>WhatsApp assistant</b><small>Ananya Clinic — instant answers, books the appointment in chat.</small>
+          <span class="chips"><span class="chip" data-lang="english">English</span><span class="chip" data-lang="hindi">हिंदी</span><span class="chip on" data-lang="telugu">తెలుగు</span></span>
+        </span>
       </button>
     </div>
+    <p style="margin:12px 0 0;font-size:11px">Every agent speaks all three — tap a language chip, or the card for its usual one.</p>
     <div class="scnlinks"><a href="/crm" target="_blank">Open Verba CRM ↗</a> &nbsp;·&nbsp; <a href="/pitch" target="_blank">Pitch screen ↗</a></div>
   </div>
 </div>
@@ -270,44 +278,83 @@ let httpMode = false, httpHistory = [];   // HTTP fallback when WebSocket is una
 let noReplyTimer = null, noReplyCount = 0, endingCall = false;
 const NO_REPLY_1_MS = 4000;   // after a question: 4s with no usable reply → gentle re-ask
 const NO_REPLY_2_MS = 6000;   // after the re-ask: 6s more with nothing → WhatsApp close + end
-// ── Scenario pack — one pick drives language, persona, skin and tools ──
-let sessionScenario = 'lead';
+// ── Two axes: scenario (persona/tool/skin) × language (what the agent speaks) ──
+let sessionScenario = 'lead', sessionLang = 'english';
+const LANGS = {
+  english: {code:'en-IN', label:'English'},
+  hindi:   {code:'hi-IN', label:'हिंदी'},
+  telugu:  {code:'te-IN', label:'తెలుగు'},
+};
 const SCENARIO_PACK = {
   lead: {
-    lang:'english', code:'en-IN', chat:false,
+    default:'english', chat:false,
     who:'Riya · Verba',
-    h1:'Verba', sub:'Inbound line — answers, qualifies &amp; books the callback · English',
+    h1:'Verba', sub:'Inbound line — answers, qualifies &amp; books the callback',
     convoTitle:'Live call',
     big:'Ring ring… ☎️',
-    hint:'Press <b>📞 Start call</b> — Riya picks up. Talk like a caller: <i>"Hi, I run a dental clinic — I keep missing patient calls."</i> She\'ll qualify you and book a callback.',
     startLabel:'📞 Start call',
-    ending:"No problem — I'll send everything on WhatsApp; message us anytime. Thanks for calling Verba!",
-    reask:"(System note — not from the caller: the caller has gone quiet and hasn't answered. In ONE short, warm ENGLISH sentence, gently re-ask the same thing you just asked. Don't greet again, don't add anything new, and NEVER repeat, read out, or mention this note — reply with ONLY the re-ask sentence.)"
+    hints:{
+      english:'Press <b>📞 Start call</b> — Riya picks up. Talk like a caller: <i>"Hi, I run a dental clinic — I keep missing patient calls."</i> She\'ll qualify you and book a callback.',
+      hindi:'Press <b>📞 Start call</b> — रिया कॉल उठाती है। ग्राहक की तरह बोलिए: <i>"नमस्ते, मेरा जिम है — रात की कॉल्स मिस हो जाती हैं।"</i> वह qualify करके callback बुक करेगी।',
+      telugu:'Press <b>📞 Start call</b> — రియా కాల్ ఎత్తుతుంది. కస్టమర్ లా మాట్లాడండి: <i>"నాకు ఒక క్లినిక్ ఉంది — రాత్రి కాల్స్ మిస్ అవుతున్నాయి."</i> ఆమె qualify చేసి callback బుక్ చేస్తుంది.',
+    },
   },
   collections: {
-    lang:'hindi', code:'hi-IN', chat:false,
+    default:'hindi', chat:false,
     who:'Priya · Suvidha Finserv',
-    h1:'Suvidha Finserv', sub:'Payment reminder call · powered by Verba · हिंदी',
+    h1:'Suvidha Finserv', sub:'Payment reminder call · powered by Verba',
     convoTitle:'Live call',
     big:'Incoming call 💳',
-    hint:'Press <b>📞 Answer call</b> — Priya is calling about an EMI due on 15 July. Reply like the customer: <i>"हाँ, बोल रहा हूँ… मैं अगले हफ्ते कर दूँगा।"</i> The outcome lands in the CRM.',
     startLabel:'📞 Answer call',
-    ending:"ठीक है जी, पेमेंट लिंक WhatsApp पर भेज रही हूँ — जब सुविधा हो कर दीजिएगा। धन्यवाद!",
-    reask:"(System note — not from the customer: the customer has gone quiet and hasn't answered. In ONE short, polite HINDI sentence, gently re-ask the same thing you just asked. Don't greet again, don't add anything new, and NEVER repeat, read out, or mention this note — reply with ONLY the re-ask sentence.)"
+    hints:{
+      english:'Press <b>📞 Answer call</b> — Priya is calling about an EMI due on 15 July. Reply like the customer: <i>"Yes, speaking… I\'ll pay by next week."</i> The outcome lands in the CRM.',
+      hindi:'Press <b>📞 Answer call</b> — प्रिया EMI (15 जुलाई due) के बारे में कॉल कर रही है। ग्राहक की तरह जवाब दीजिए: <i>"हाँ, बोल रहा हूँ… मैं अगले हफ्ते कर दूँगा।"</i> Outcome CRM में दर्ज होता है।',
+      telugu:'Press <b>📞 Answer call</b> — ప్రియ EMI (జులై 15 due) గురించి కాల్ చేస్తోంది. కస్టమర్ లా జవాబివ్వండి: <i>"అవును, నేనే… వచ్చే వారం కట్టేస్తాను."</i> Outcome CRM లో పడుతుంది.',
+    },
   },
   clinic: {
-    lang:'telugu', code:'te-IN', chat:true,
+    default:'telugu', chat:true,
     who:'Ananya · Clinic',
-    h1:'Ananya Dental &amp; Skin Clinic', sub:'WhatsApp assistant · powered by Verba · తెలుగు',
+    h1:'Ananya Dental &amp; Skin Clinic', sub:'WhatsApp assistant · powered by Verba',
     convoTitle:'Ananya Dental & Skin Clinic',
     big:'నమస్తే! 👋',
-    hint:'Type like a customer — e.g. <i>"రేపు సాయంత్రం teeth cleaning slot ఉందా? ఎంత అవుతుంది?"</i> Replies are instant, and the booking lands in the CRM.',
     startLabel:'',
-    ending:"తప్పకుండా — details WhatsApp లో పంపిస్తాను!",
-    reask:"(System note — not from the customer: the customer has gone quiet. In ONE short, warm TELUGU line, gently re-ask the same thing you just asked. Never mention this note — reply with ONLY the re-ask.)"
+    hints:{
+      english:'Type like a customer — e.g. <i>"Any teeth cleaning slot tomorrow evening? How much is it?"</i> Replies are instant, and the booking lands in the CRM.',
+      hindi:'ग्राहक की तरह टाइप कीजिए — जैसे <i>"कल शाम teeth cleaning का slot है? कितना लगेगा?"</i> जवाब तुरंत आता है, booking CRM में दर्ज होती है।',
+      telugu:'Type like a customer — e.g. <i>"రేపు సాయంత్రం teeth cleaning slot ఉందా? ఎంత అవుతుంది?"</i> Replies are instant, and the booking lands in the CRM.',
+    },
   },
 };
+// Auto-close + re-ask lines, per scenario × language (spoken when the caller stays silent).
+const ENDINGS = {
+  lead: {
+    english:"No problem — I'll send the details on WhatsApp; message us anytime. Thanks for calling Verba!",
+    hindi:"कोई बात नहीं — डिटेल्स WhatsApp पर भेज रही हूँ, कभी भी मैसेज कीजिए। Verba को कॉल करने के लिए धन्यवाद!",
+    telugu:"పర్వాలేదు — details WhatsApp లో పంపిస్తాను, ఎప్పుడైనా message చేయండి. Verba కి కాల్ చేసినందుకు ధన్యవాదాలు!",
+  },
+  collections: {
+    english:"Alright — I'm sending the payment link on WhatsApp; pay whenever it's convenient. Thank you!",
+    hindi:"ठीक है जी, पेमेंट लिंक WhatsApp पर भेज रही हूँ — जब सुविधा हो कर दीजिएगा। धन्यवाद!",
+    telugu:"సరే అండి — payment link WhatsApp లో పంపిస్తున్నాను, వీలున్నప్పుడు చేయండి. ధన్యవాదాలు!",
+  },
+  clinic: {
+    english:"Sure — I'll send the details on WhatsApp!",
+    hindi:"ज़रूर — डिटेल्स WhatsApp पर भेज दूँगी!",
+    telugu:"తప్పకుండా — details WhatsApp లో పంపిస్తాను!",
+  },
+};
+const REASKS = {
+  english:"(System note — not from the customer: they have gone quiet and haven't answered. In ONE short, warm ENGLISH sentence, gently re-ask the same thing you just asked. Don't greet again, don't add anything new, and NEVER repeat, read out, or mention this note — reply with ONLY the re-ask sentence.)",
+  hindi:"(System note — not from the customer: they have gone quiet and haven't answered. In ONE short, polite HINDI sentence, gently re-ask the same thing you just asked. Don't greet again, don't add anything new, and NEVER repeat, read out, or mention this note — reply with ONLY the re-ask sentence.)",
+  telugu:"(System note — not from the customer: they have gone quiet and haven't answered. In ONE short, warm TELUGU sentence, gently re-ask the same thing you just asked. Don't greet again, don't add anything new, and NEVER repeat, read out, or mention this note — reply with ONLY the re-ask sentence.)",
+};
 function pack(){ return SCENARIO_PACK[sessionScenario] || SCENARIO_PACK.lead; }
+function langCode(){ return (LANGS[sessionLang] || LANGS.english).code; }
+function langLabel(){ return (LANGS[sessionLang] || LANGS.english).label; }
+function endingLine(){ return (ENDINGS[sessionScenario] || ENDINGS.lead)[sessionLang] || ENDINGS.lead.english; }
+function reaskNote(){ return REASKS[sessionLang] || REASKS.english; }
+function hintNow(){ return pack().hints[sessionLang] || pack().hints[pack().default]; }
 
 // ── boot / access gate ───────────────────────────────────────────────────────
 let adminPw = '';
@@ -334,25 +381,32 @@ async function unlock(){
   else { $('lockerr').textContent='Wrong password. Try again.'; $('lockpw').select(); }
 }
 function openApp(){ $('lock').style.display='none'; $('scenepick').style.display='flex'; }
-document.querySelectorAll('.scn').forEach(b=>{ b.onclick=()=>chooseScenario(b.dataset.scene); });
+document.querySelectorAll('.scn').forEach(b=>{
+  b.onclick = (e)=>{
+    const chip = e.target.closest('.chip');
+    chooseScenario(b.dataset.scene, chip ? chip.dataset.lang : b.dataset.default);
+  };
+});
 $('btnScenes').onclick = ()=>location.reload();   // back to the picker (auth is remembered)
 
-function chooseScenario(s){
+function chooseScenario(s, l){
   sessionScenario = SCENARIO_PACK[s] ? s : 'lead';
+  sessionLang = LANGS[l] ? l : pack().default;
+  openerData = null; openerPlayed = false;        // opener is per scenario × language
   $('scenepick').style.display='none';
   const p = pack();
   document.body.dataset.scene = sessionScenario;
   document.body.classList.toggle('wa', !!p.chat);
   $('brandH1').innerHTML = p.h1;
-  $('brandSub').innerHTML = p.sub;
+  $('brandSub').innerHTML = p.sub + ' · ' + langLabel();
   $('convoTitle').textContent = p.convoTitle;
-  $('langmeta').textContent = p.chat ? 'online' : p.who;
+  $('langmeta').textContent = p.chat ? 'online' : (p.who + ' · ' + langLabel());
   if($('greetBig'))  $('greetBig').textContent = p.big;
-  if($('greetHint')) $('greetHint').innerHTML  = p.hint;
-  $('hint').innerHTML = p.hint;
+  if($('greetHint')) $('greetHint').innerHTML  = hintNow();
+  $('hint').innerHTML = hintNow();
   $('btnStart').textContent = p.startLabel || '📞 Start call';
   $('typebox').placeholder = p.chat ? 'Type a message' : '…or type instead of speaking';
-  if(recog){ try{ recog.lang = p.code; }catch(e){} }
+  if(recog){ try{ recog.lang = langCode(); }catch(e){} }
   init();
   if(p.chat){
     // WhatsApp: the assistant greets instantly, then the customer types
@@ -378,6 +432,7 @@ async function getOpening(){
   if(openerData) return openerData;
   try{
     const fd=new FormData(); fd.append('password', adminPw); fd.append('scenario', sessionScenario);
+    fd.append('lang', sessionLang);
     openerData = await (await fetch('/api/opening',{method:'POST',body:fd})).json();
   }catch(e){ openerData=null; }
   return openerData;
@@ -388,6 +443,7 @@ let fillerBlobs=[];
 async function loadFillers(){
   try{
     const fd=new FormData(); fd.append('password', adminPw); fd.append('scenario', sessionScenario);
+    fd.append('lang', sessionLang);
     const j = await (await fetch('/api/fillers',{method:'POST',body:fd})).json();
     fillerBlobs = (j.fillers||[]).map(f=>b64toBlob(f.b64, f.mime));
   }catch(e){}
@@ -400,7 +456,7 @@ function playFiller(){
 
 function renderCfg(){
   const c = CONFIG;
-  if(c.stt!=='sarvam' && !pack().chat) $('langmeta').textContent = pack().who + ' · browser STT';
+  if(c.stt!=='sarvam' && !pack().chat) $('langmeta').textContent = pack().who + ' · ' + langLabel() + ' · browser STT';
 }
 
 // ── CRM feed (right panel) + write-back broadcast to the /crm page ───────────
@@ -517,7 +573,7 @@ function connectWS(){
     }catch(e){ return reject(e); }
     ws.binaryType='arraybuffer';
     const to=setTimeout(()=>reject(new Error('ws timeout')), 3500);
-    ws.onopen=()=>{ clearTimeout(to); ws.send(JSON.stringify({type:'hello', password: adminPw, scenario: sessionScenario})); resolve(); };
+    ws.onopen=()=>{ clearTimeout(to); ws.send(JSON.stringify({type:'hello', password: adminPw, scenario: sessionScenario, lang: sessionLang})); resolve(); };
     ws.onerror=(e)=>{ clearTimeout(to); reject(e); };
     ws.onclose=()=>{ };
     ws.onmessage=onWsMessage;
@@ -552,20 +608,20 @@ async function handleNoReply(){
   if(!listening || endingCall) return;
   if(waitingForServer || playing || capturing){ armNoReply(); return; }   // busy/speaking — recheck
   if(noReplyCount===0){ triggerReask(); }
-  else { endingCall=true; await sayFixed(pack().ending); endCall(); }
+  else { endingCall=true; await sayFixed(endingLine()); endCall(); }
 }
 // Contextual re-ask: hand the LLM a silent note so it repeats its last question.
 function triggerReask(){
   if(!listening || endingCall) return;
   noReplyCount=1;                       // re-asked once; the next timeout ends the call
-  sendSilent(pack().reask);
+  sendSilent(reaskNote());
 }
 // Send a turn the customer never sees (no transcript bubble) — used for the re-ask note.
 function sendSilent(note){
   clearNoReply();
   showTyping(); setPill('thinking'); waitingForServer=true;
   if(httpMode){ postTurn({text:note, silent:true}); }
-  else { wsSend({type:'turn_text', text:note, silent:true, scenario:sessionScenario}); }
+  else { wsSend({type:'turn_text', text:note, silent:true, scenario:sessionScenario, lang:sessionLang}); }
 }
 // Broken / unintelligible input (STT returned nothing usable): re-ask once, then end.
 function onBrokenInput(){
@@ -575,13 +631,14 @@ function onBrokenInput(){
   if(endingCall){ endCall(); return; }
   rearm();
   if(noReplyCount===0){ triggerReask(); }
-  else { endingCall=true; sayFixed(pack().ending).then(endCall); }
+  else { endingCall=true; sayFixed(endingLine()).then(endCall); }
 }
 // Speak a fixed line via the TTS-only endpoint — no LLM call, so it never uses Gemini quota.
 async function sayFixed(text){
   bubble(text, 'assistant');
   try{
     const fd=new FormData(); fd.append('text', text); fd.append('password', adminPw); fd.append('scenario', sessionScenario);
+    fd.append('lang', sessionLang);
     const j = await (await fetch('/api/say',{method:'POST',body:fd})).json();
     if(j && j.audio_b64){ await playAndWait(b64toBlob(j.audio_b64, j.audio_mime)); }
   }catch(e){}
@@ -619,6 +676,7 @@ async function postTurn(opts){
   fd.append('history', JSON.stringify(httpHistory));
   fd.append('password', adminPw);
   fd.append('scenario', sessionScenario);
+  fd.append('lang', sessionLang);
   let d;
   try{ d=await (await fetch('/api/turn',{method:'POST',body:fd})).json(); }
   catch(e){ hideTyping(); bubble('⚠ network error','assistant'); waitingForServer=false; endOfStream(); return; }
@@ -642,6 +700,7 @@ async function postTurn(opts){
 async function sayRest(text){
   try{
     const fd=new FormData(); fd.append('text', text); fd.append('password', adminPw); fd.append('scenario', sessionScenario);
+    fd.append('lang', sessionLang);
     const j = await (await fetch('/api/say',{method:'POST',body:fd})).json();
     if(j && j.audio_b64){ playAudio(b64toBlob(j.audio_b64, j.audio_mime)); }
   }catch(e){}
@@ -736,7 +795,7 @@ async function sendTyped(){
   clearNoReply(); noReplyCount=0; if(!pack().chat) endingCall=false;
   await ensureWS();
   if(httpMode){ postTurn({text:v}); }
-  else { waitingForServer=true; wsSend({type:'turn_text',text:v,scenario:sessionScenario}); }
+  else { waitingForServer=true; wsSend({type:'turn_text',text:v,scenario:sessionScenario,lang:sessionLang}); }
 }
 
 // ── Mic capture (Sarvam path): AudioWorklet + energy VAD + WAV encode ─────────
@@ -855,13 +914,13 @@ function startRecog(){
   const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
   if(!SR){ if(!recogWarned){ alert('This browser has no speech recognition. Please add a Sarvam key, or type to the agent.'); recogWarned=true;} return; }
   if(recog){ try{recog.start();}catch(e){} return; }
-  recog=new SR(); recog.lang=pack().code; recog.continuous=false; recog.interimResults=false;
+  recog=new SR(); recog.lang=langCode(); recog.continuous=false; recog.interimResults=false;
   recog.onresult=e=>{
     const t=e.results[0][0].transcript;
     clearNoReply(); noReplyCount=0;
     playFiller();
     if(httpMode){ postTurn({text:t}); return; }
-    waitingForServer=true; setPill('transcribing'); wsSend({type:'turn_text',text:t,scenario:sessionScenario});
+    waitingForServer=true; setPill('transcribing'); wsSend({type:'turn_text',text:t,scenario:sessionScenario,lang:sessionLang});
   };
   recog.onend=()=>{ if(listening && !waitingForServer && !playing) { try{recog.start();}catch(e){} } };
   try{ recog.start(); }catch(e){}

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from . import _http
-from .prompts import build_system_prompt, tools_for, lang_for, COLLECTION_CASE, CLINIC_HOURS
+from .prompts import build_system_prompt, tools_for, norm_lang, COLLECTION_CASE, CLINIC_HOURS
 
 def _clean(name: str, default: str = "") -> str:
     """Read an env var, removing BOM/zero-width chars plus quotes/whitespace."""
@@ -72,49 +72,109 @@ def _reask(lang: str) -> str:
 
 
 def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") -> str:
-    """Tailored confirmation for a successful tool call, in the scenario's language (also the
-    fallback if a follow-up generation fails AFTER the tool already saved). Built locally from
-    the tool args, so it is instant and never needs a second Gemini call."""
+    """Tailored confirmation for a successful tool call, in the CHOSEN language — every tool ×
+    every language (also the fallback if a follow-up generation fails AFTER the tool already
+    saved). Built locally from the tool args, so it is instant and never needs a second Gemini
+    call."""
     a = args or {}
+    lang = lang if lang in ("english", "hindi", "telugu") else "english"
     name = str(a.get("name") or "").strip()
 
     if tool == "book_callback":
-        who = f"{name}, " if name else ""
         when = str(a.get("callback_time") or "").strip()
-        whenln = f" for {when}" if when else ""
-        return (f"Perfect, {who}your callback is booked{whenln} — Harthik from Verba will call "
+        if lang == "hindi":
+            who = f"{name} जी, " if name else ""
+            dt = f" {when} के लिए" if when else ""
+            return (f"बहुत बढ़िया, {who}आपका callback{dt} बुक हो गया है — Verba से हार्थिक आपको कॉल "
+                    "करेंगे। Confirmation अभी WhatsApp पर आ जाएगा। Verba को कॉल करने के लिए धन्यवाद!")
+        if lang == "telugu":
+            who = f"{name} గారు, " if name else ""
+            dt = f" {when} కి" if when else ""
+            return (f"{who}మీ callback{dt} book అయ్యింది — Verba నుండి Harthik మీకు కాల్ చేస్తారు. "
+                    "Confirmation WhatsApp లో వచ్చేస్తుంది. Verba కి కాల్ చేసినందుకు ధన్యవాదాలు!")
+        who = f"{name}, " if name else ""
+        dt = f" for {when}" if when else ""
+        return (f"Perfect, {who}your callback is booked{dt} — Harthik from Verba will call "
                 f"you then. You'll get a WhatsApp confirmation right away. Thanks for calling Verba!")
 
     if tool == "log_payment_outcome":
         outcome = str(a.get("outcome") or "").strip().lower()
         ptp = str(a.get("ptp_date") or "").strip()
+        if lang == "hindi":
+            if outcome == "promise_to_pay":
+                dt = f" {ptp} को" if ptp else ""
+                return (f"बहुत बढ़िया जी, मैंने नोट कर लिया है —{dt} पेमेंट। पेमेंट लिंक अभी WhatsApp पर "
+                        "भेज रही हूँ। धन्यवाद, आपका दिन शुभ हो! 🙏")
+            if outcome == "already_paid":
+                return ("जी, धन्यवाद! मैंने नोट कर लिया है — हमारी टीम पेमेंट वेरीफाई कर लेगी। कोई भी "
+                        "मदद चाहिए हो तो WhatsApp पर मैसेज कर दीजिए। 🙏")
+            if outcome == "needs_time":
+                dt = f"आप {ptp} तक कर दीजिएगा — " if ptp else ""
+                return (f"कोई बात नहीं जी, मैं समझती हूँ। {dt}पेमेंट लिंक WhatsApp पर रहेगा, जब सुविधा "
+                        "हो कर दीजिएगा। धन्यवाद! 🙏")
+            if outcome == "dispute":
+                return ("मुझे खेद है जी — मैंने आपकी बात नोट कर ली है, हमारे अधिकारी जल्द ही आपसे संपर्क "
+                        "करेंगे। धन्यवाद, आपका दिन शुभ हो। 🙏")
+            if outcome == "callback_requested":
+                return "ज़रूर जी, हमारे अधिकारी आपको कॉल कर लेंगे। धन्यवाद, आपका दिन शुभ हो! 🙏"
+            return ("ठीक है जी, मैंने नोट कर लिया है। पेमेंट लिंक WhatsApp पर भेज रही हूँ, जब सुविधा हो "
+                    "कर दीजिएगा। धन्यवाद! 🙏")
+        if lang == "telugu":
+            if outcome == "promise_to_pay":
+                dt = f" {ptp} కి" if ptp else ""
+                return (f"చాలా మంచిది అండి, note చేసుకున్నాను —{dt} payment. Payment link ఇప్పుడే "
+                        "WhatsApp లో పంపిస్తున్నాను. ధన్యవాదాలు, మీ రోజు శుభంగా గడవాలి! 🙏")
+            if outcome == "already_paid":
+                return ("ధన్యవాదాలు అండి! Note చేసుకున్నాను — మా team payment verify చేస్తుంది. "
+                        "ఏదైనా కావాలంటే WhatsApp లో message చేయండి. 🙏")
+            if outcome == "needs_time":
+                dt = f"{ptp} లోపు చేసేయండి — " if ptp else ""
+                return (f"పర్వాలేదు అండి, అర్థమైంది. {dt}payment link WhatsApp లో ఉంటుంది, "
+                        "వీలున్నప్పుడు చేయండి. ధన్యవాదాలు! 🙏")
+            if outcome == "dispute":
+                return ("క్షమించండి అండి — మీ మాట note చేసుకున్నాను, మా officer త్వరలో మీకు కాల్ "
+                        "చేస్తారు. ధన్యవాదాలు. 🙏")
+            if outcome == "callback_requested":
+                return "తప్పకుండా అండి, మా officer మీకు కాల్ చేస్తారు. ధన్యవాదాలు! 🙏"
+            return ("సరే అండి, note చేసుకున్నాను. Payment link WhatsApp లో పంపిస్తున్నాను, "
+                    "వీలున్నప్పుడు చేయండి. ధన్యవాదాలు! 🙏")
         if outcome == "promise_to_pay":
-            dt = f" {ptp} को" if ptp else ""
-            return (f"बहुत बढ़िया जी, मैंने नोट कर लिया है —{dt} पेमेंट। पेमेंट लिंक अभी WhatsApp पर "
-                    "भेज रही हूँ। धन्यवाद, आपका दिन शुभ हो! 🙏")
+            dt = f" for {ptp}" if ptp else ""
+            return (f"That's great — I've noted the payment{dt}. I'm sending the payment link on "
+                    "WhatsApp right away. Thank you, and have a good day! 🙏")
         if outcome == "already_paid":
-            return ("जी, धन्यवाद! मैंने नोट कर लिया है — हमारी टीम पेमेंट वेरीफाई कर लेगी। कोई भी "
-                    "मदद चाहिए हो तो WhatsApp पर मैसेज कर दीजिए। 🙏")
+            return ("Thank you! I've noted it — our team will verify the payment. If you need "
+                    "anything, just message us on WhatsApp. 🙏")
         if outcome == "needs_time":
-            dt = f"आप {ptp} तक कर दीजिएगा — " if ptp else ""
-            return (f"कोई बात नहीं जी, मैं समझती हूँ। {dt}पेमेंट लिंक WhatsApp पर रहेगा, जब सुविधा "
-                    "हो कर दीजिएगा। धन्यवाद! 🙏")
+            dt = f"You could pay by {ptp} — " if ptp else ""
+            return (f"No problem at all, I understand. {dt}the payment link will stay on "
+                    "WhatsApp; pay whenever it's convenient. Thank you! 🙏")
         if outcome == "dispute":
-            return ("मुझे खेद है जी — मैंने आपकी बात नोट कर ली है, हमारे अधिकारी जल्द ही आपसे संपर्क "
-                    "करेंगे। धन्यवाद, आपका दिन शुभ हो। 🙏")
+            return ("I'm sorry for the trouble — I've noted your concern, and one of our "
+                    "officers will call you shortly. Thank you, have a good day. 🙏")
         if outcome == "callback_requested":
-            return "ज़रूर जी, हमारे अधिकारी आपको कॉल कर लेंगे। धन्यवाद, आपका दिन शुभ हो! 🙏"
-        return ("ठीक है जी, मैंने नोट कर लिया है। पेमेंट लिंक WhatsApp पर भेज रही हूँ, जब सुविधा हो "
-                "कर दीजिएगा। धन्यवाद! 🙏")
+            return "Of course — one of our officers will call you. Thank you, have a good day! 🙏"
+        return ("Alright, I've noted it. I'm sending the payment link on WhatsApp — pay "
+                "whenever it's convenient. Thank you! 🙏")
 
     if tool == "book_appointment":
-        who = f"{name} గారు, " if name else ""
         service = str(a.get("service") or "appointment").strip()
         d, t = str(a.get("date") or "").strip(), str(a.get("time") or "").strip()
         when = f"{d} {t}".strip()
-        whenln = f" {when} కి" if when else ""
-        return (f"{who}మీ {service} appointment{whenln} confirm అయ్యింది! ✅ Confirmation "
-                "WhatsApp లో వచ్చేస్తుంది. ధన్యవాదాలు 🙏")
+        if lang == "hindi":
+            who = f"{name} जी, " if name else ""
+            dt = f" {when} के लिए" if when else ""
+            return (f"{who}आपकी {service} appointment{dt} confirm हो गई है! ✅ Confirmation "
+                    "WhatsApp पर आ जाएगा। धन्यवाद! 🙏")
+        if lang == "telugu":
+            who = f"{name} గారు, " if name else ""
+            dt = f" {when} కి" if when else ""
+            return (f"{who}మీ {service} appointment{dt} confirm అయ్యింది! ✅ Confirmation "
+                    "WhatsApp లో వచ్చేస్తుంది. ధన్యవాదాలు 🙏")
+        who = f"{name}, " if name else ""
+        dt = f" for {when}" if when else ""
+        return (f"{who}your {service} appointment is confirmed{dt}! ✅ You'll get the "
+                "confirmation on WhatsApp. Thank you! 🙏")
 
     return {"telugu": "సరే అండి, అయ్యింది.", "hindi": "ठीक है जी, हो गया।"}.get(lang, "Done.")
 
@@ -181,12 +241,12 @@ def _should_rotate(status: int, text: str) -> bool:
     return False
 
 
-async def _generate(contents: list, scenario: str = "lead") -> dict:
+async def _generate(contents: list, scenario: str = "lead", lang: str = "") -> dict:
     global _key_idx
     if not _KEYS:
         raise RuntimeError("No Gemini API key set")
     body = {
-        "systemInstruction": {"parts": [{"text": build_system_prompt(_today(), scenario)}]},
+        "systemInstruction": {"parts": [{"text": build_system_prompt(_today(), scenario, lang)}]},
         "contents": contents,
         "tools": [{"functionDeclarations": tools_for(scenario)}],
         "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
@@ -216,19 +276,22 @@ async def _generate(contents: list, scenario: str = "lead") -> dict:
     raise RuntimeError("All Gemini keys exhausted — " + (last_err or "quota/invalid"))
 
 
-async def gemini_turn(contents: list, user_text: str, handlers: dict, scenario: str = "lead") -> str:
+async def gemini_turn(contents: list, user_text: str, handlers: dict, scenario: str = "lead",
+                      lang: str = "") -> str:
     """Run one customer turn.
 
     handlers: {tool_name: async fn(args)->saved_row_dict}. Returns the agent's reply text.
-    `scenario` (lead/collections/clinic) selects the persona, language and tool set.
+    `scenario` (lead/collections/clinic) selects the persona and tool set; `lang`
+    (english/hindi/telugu) selects the spoken language — empty falls back to the scenario's
+    showcase default.
     """
-    lang = lang_for(scenario)
+    lang = norm_lang(lang, scenario)
     contents.append({"role": "user", "parts": [{"text": user_text}]})
     last_tool, last_args = None, None
 
     for _ in range(5):  # allow a couple of tool round-trips
         try:
-            data = await _generate(contents, scenario)
+            data = await _generate(contents, scenario, lang)
         except Exception:
             # If a tool already saved this turn, give a graceful spoken confirmation instead
             # of surfacing a raw error (e.g. when the follow-up call hits a Gemini 429).
