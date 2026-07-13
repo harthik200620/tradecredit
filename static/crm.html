@@ -101,11 +101,9 @@
   </header>
 
   <div class="filters">
-    <button class="fchip on" data-k="all">All</button>
-    <button class="fchip" data-k="lead">Leads</button>
-    <button class="fchip" data-k="collection">Collections</button>
-    <button class="fchip" data-k="appointment">Appointments</button>
-    <button class="fchip" data-k="enquiry">Enquiries</button>
+    <button class="fchip" data-k="lead">🏠 Verba Realty · Leads</button>
+    <button class="fchip" data-k="collections">💳 Suvidha Finserv · Collections</button>
+    <button class="fchip" data-k="clinic">🦷 Ananya Clinic · Bookings &amp; Enquiries</button>
   </div>
 
   <div class="list" id="list">
@@ -126,7 +124,9 @@ const KIND = {
   appointment: {label:'Appointment',     cls:'apt'},
   enquiry:     {label:'Enquiry',         cls:'enq'},
 };
-let adminPw='', records={}, filter='all';   // records keyed by kind-id
+// Three separate CRMs — one per business. The tab picks whose CRM you're looking at.
+const params = new URLSearchParams(location.search);
+let adminPw='', records={}, filter=(['lead','collections','clinic'].includes(params.get('s')) ? params.get('s') : 'lead');
 
 function key(r){ return (r.kind||'x')+'-'+(r.id||0); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -140,8 +140,9 @@ function upsert(r, flash){
 }
 function render(flashKey){
   const list=$('list');
+  document.querySelectorAll('.fchip').forEach(x=>x.classList.toggle('on', x.dataset.k===filter));
   const rows=Object.values(records)
-    .filter(r=>filter==='all'||r.kind===filter)
+    .filter(r=>(r.scenario||'lead')===filter)
     .sort((a,b)=> (b.created_at||'').localeCompare(a.created_at||'') || (b.id-a.id));
   list.querySelectorAll('.rec').forEach(n=>n.remove());
   $('empty').style.display = rows.length ? 'none' : '';
@@ -158,13 +159,11 @@ function render(flashKey){
       (r.created_at?`<span>${esc(r.created_at)}</span>`:'')+`<span>#${esc(r.id)}</span></div>`;
     list.appendChild(d);
   }
-  const n=Object.keys(records).length;
-  $('count').textContent = '· '+n+' record'+(n===1?'':'s');
+  $('count').textContent = '· '+rows.length+' record'+(rows.length===1?'':'s');
 }
 
 document.querySelectorAll('.fchip').forEach(b=>{
-  b.onclick=()=>{ filter=b.dataset.k;
-    document.querySelectorAll('.fchip').forEach(x=>x.classList.toggle('on', x===b)); render(); };
+  b.onclick=()=>{ filter=b.dataset.k; render(); };
 });
 
 // Three sources, merged: (1) the agent tab broadcasts each new row instantly,

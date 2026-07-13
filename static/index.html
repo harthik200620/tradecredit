@@ -238,9 +238,9 @@
     <!-- CRM write-back feed -->
     <div class="panel">
       <div class="phead">
-        <span class="ttl">Verba CRM</span>
+        <span class="ttl" id="crmTitle">CRM</span>
         <span class="cnt-badge" id="crmcount">0</span>
-        <a class="crmopen" href="/crm" target="_blank">Open ↗</a>
+        <a class="crmopen" id="crmOpen" href="/crm" target="_blank">Open ↗</a>
       </div>
       <div class="listbox" id="crmfeed">
         <div class="bk-empty" id="crmEmpty">Every outcome writes back here automatically —<br>lead callbacks, payment promises, appointments.</div>
@@ -277,9 +277,10 @@ let recog = null;                 // Web Speech fallback
 let pendingAudioMime = null, currentAudio = null;
 let typingEl = null;
 let httpMode = false, httpHistory = [];   // HTTP fallback when WebSocket is unavailable (e.g. Vercel)
-let noReplyTimer = null, noReplyCount = 0, endingCall = false;
-const NO_REPLY_1_MS = 4000;   // after a question: 4s with no usable reply → gentle re-ask
-const NO_REPLY_2_MS = 6000;   // after the re-ask: 6s more with nothing → WhatsApp close + end
+let noReplyTimer = null, noReplyCount = 0, endingCall = false, chatActive = false;
+// No-reply ladder: 3s → follow-up #1, 3s → follow-up #2, 3s → hang up AND record in the CRM.
+// Chat gets a wider window (people type slower than they speak).
+const NO_REPLY_MS = 3000, NO_REPLY_CHAT_MS = 8000;
 // ── Two axes: scenario (persona/tool/skin) × language (what the agent speaks) ──
 let sessionScenario = 'lead', sessionLang = 'english';
 const LANGS = {
@@ -394,7 +395,8 @@ $('btnScenes').onclick = ()=>location.reload();   // back to the picker (auth is
 function chooseScenario(s, l){
   sessionScenario = SCENARIO_PACK[s] ? s : 'lead';
   sessionLang = LANGS[l] ? l : pack().default;
-  openerData = null; turnsSent = 0; closeRequested = false; chatNudged = false;
+  openerData = null; turnsSent = 0; closeRequested = false; noReplyCount = 0;
+  chatActive = !!pack().chat;
   $('scenepick').style.display='none';
   const p = pack();
   document.body.dataset.scene = sessionScenario;
@@ -408,28 +410,17 @@ function chooseScenario(s, l){
   $('hint').innerHTML = hintNow();
   $('btnStart').textContent = p.startLabel || '📞 Start call';
   $('typebox').placeholder = p.chat ? 'Type a message' : '…or type instead of speaking';
+  $('crmTitle').textContent = CRM_NAME[sessionScenario] || 'CRM';
+  $('crmOpen').href = '/crm?s=' + sessionScenario;
   if(recog){ try{ recog.lang = langCode(); }catch(e){} }
   init();
   if(p.chat){
-    // WhatsApp: the assistant greets instantly, then the customer types
-    getOpening().then(od=>{ if(od && od.text){ bubble(od.text,'assistant'); armChatNudge(); } });
+    // WhatsApp: the assistant greets instantly, then the customer types (or the ladder nudges)
+    getOpening().then(od=>{ if(od && od.text){ bubble(od.text,'assistant'); armNoReply(); } });
     setTimeout(()=>$('typebox').focus(), 150);
   } else {
     getOpening();   // warm the intro audio so the agent's first line plays instantly
   }
-}
-
-// If the chat customer opens and says nothing, offer once: "I can book appointments…"
-function armChatNudge(){
-  if(!pack().chat || chatNudged) return;
-  clearTimeout(chatNudgeTimer);
-  chatNudgeTimer = setTimeout(()=>{
-    if(chatNudged || document.querySelectorAll('.msg.user').length) return;
-    chatNudged = true;
-    sendSilent("(System note — the customer opened the chat but hasn't typed anything. In ONE short friendly "
-      + (sessionLang||'english').toUpperCase()
-      + " message, tell them you can book appointments — dental check-ups and skin consultations — and ask: shall I book one for you? Never mention this note.)");
-  }, 9000);
 }
 
 async function init(){
@@ -443,7 +434,6 @@ async function init(){
 
 // ── The agent speaks first — the opener line (audio cached server-side) ─────
 let openerData=null, turnsSent=0;          // turn 0 is the pickup — no "one moment…" before the intro
-let chatNudgeTimer=null, chatNudged=false; // one gentle offer if the chat customer stays quiet
 async function getOpening(){
   if(openerData) return openerData;
   try{
@@ -475,7 +465,12 @@ function renderCfg(){
   if(c.stt!=='sarvam' && !pack().chat) $('langmeta').textContent = pack().who + ' · ' + langLabel() + ' · browser STT';
 }
 
-// ── CRM feed (right panel) + write-back broadcast to the /crm page ───────────
+// ── CRM feed (right panel) — each business has its OWN CRM ───────────────────
+const CRM_NAME = {
+  lead:'Verba Realty CRM',
+  collections:'Suvidha Finserv CRM',
+  clinic:'Ananya Clinic CRM',
+};
 const KIND_META = {
   lead:        {label:'Lead',            cls:''},
   callback:    {label:'Lead · Callback', cls:''},
@@ -485,6 +480,7 @@ const KIND_META = {
 };
 function addCrmCard(r, quiet){
   if(!r || !r.id) return;
+  if(r.scenario && r.scenario !== sessionScenario) return;   // this panel is THIS business's CRM
   const box=$('crmfeed');
   if(box.querySelector('.bk[data-id="'+r.kind+'-'+r.id+'"]')) return;   // dedupe
   const km = KIND_META[r.kind] || {label:r.kind||'record', cls:''};
@@ -504,8 +500,9 @@ async function loadCrm(){
     const fd=new FormData(); fd.append('password', adminPw);
     const {records} = await (await fetch('/api/crm',{method:'POST',body:fd})).json();
     $('crmfeed').querySelectorAll('.bk').forEach(n=>n.remove());
-    (records||[]).slice().reverse().forEach(r=>addCrmCard(r, true));
-    $('crmcount').textContent = (records? records.length:0);
+    const mine = (records||[]).filter(r=>!r.scenario || r.scenario===sessionScenario);
+    mine.slice().reverse().forEach(r=>addCrmCard(r, true));
+    $('crmcount').textContent = mine.length;
   }catch(e){}
 }
 let crmBC=null;
@@ -519,8 +516,12 @@ function broadcastCrm(r){
 }
 function onCrm(r){
   addCrmCard(r); broadcastCrm(r);
-  sysNote('✓ Logged to Verba CRM');
-  if(!pack().chat) endingCall=true;   // voice: wrap up after the outcome is saved
+  sysNote('✓ Logged to CRM');
+  if(!pack().chat){ endingCall=true; }               // voice: wrap up after the outcome is saved
+  else if(closeRequested){                            // chat closed for no reply — stop the ladder
+    chatActive=false; clearNoReply();
+    sysNote('💬 Chat closed — press ⟳ Restart to start again.');
+  }
 }
 
 // ── UI helpers ───────────────────────────────────────────────────────────────
@@ -612,44 +613,61 @@ function b64toBlob(b64, mime){
   return new Blob([u8], {type:mime||'audio/mpeg'});
 }
 
-// ── Call handling: 4s no usable reply → gentle re-ask; 6s more → close + RECORD + end ──
+// ── No-reply ladder: follow-up → follow-up → hang up + RECORD in the CRM ──
 let closeRequested=false;
+function sessionActive(){ return pack().chat ? chatActive : listening; }
 function clearNoReply(){ if(noReplyTimer){ clearTimeout(noReplyTimer); noReplyTimer=null; } }
 function armNoReply(){
   clearNoReply();
-  if(pack().chat) return;                 // chat: people type at their own pace
-  if(!listening || endingCall) return;
-  const delay = (noReplyCount===0) ? NO_REPLY_1_MS : NO_REPLY_2_MS;
-  noReplyTimer = setTimeout(handleNoReply, delay);
+  if(!sessionActive() || endingCall) return;
+  noReplyTimer = setTimeout(handleNoReply, pack().chat ? NO_REPLY_CHAT_MS : NO_REPLY_MS);
 }
-// Even a silent call must land in the CRM — the close note makes the agent say one last
-// line AND log the outcome (not_interested / no_commitment) before hanging up.
+// What the follow-up says: voice re-asks the last question; chat first offers the bookings,
+// then gently checks if they're still there.
+function followupNote(){
+  const L = (sessionLang||'english').toUpperCase();
+  if(pack().chat){
+    if(noReplyCount===0)
+      return "(System note — the customer hasn't typed anything. In ONE short friendly "+L+" message, tell them you can book appointments — dental check-ups and skin consultations — and ask: shall I book one for you? Never mention this note.)";
+    return "(System note — still no reply from the customer. In ONE very short friendly "+L+" message, gently ask if they're still there and whether they'd like any help. Never mention this note.)";
+  }
+  return reaskNote();
+}
+// Even a silent conversation must land in the CRM — the close note makes the agent say one
+// last line AND log the outcome before hanging up.
 function closeNote(){
   const L = (sessionLang||'english').toUpperCase();
   if(sessionScenario==='lead')
     return "(System note — not from the customer: they have gone quiet and the call must end now. In ONE short polite "+L+" sentence close the call, and CALL qualify_lead with status='not_interested' and notes='no response on call'. Never mention this note.)";
   if(sessionScenario==='collections')
     return "(System note — not from the customer: they have gone quiet and the call must end now. In ONE short polite "+L+" sentence say the payment link is on WhatsApp and close the call, and CALL log_payment_outcome with outcome='no_commitment' and notes='no response on call'. Never mention this note.)";
+  if(sessionScenario==='clinic')
+    return "(System note — the customer never replied and this chat is being closed. In ONE short polite "+L+" message say they can message anytime to book, and CALL log_enquiry with topic='no response' and notes='customer did not reply in chat'. Never mention this note.)";
   return reaskNote();
 }
 async function handleNoReply(){
   noReplyTimer=null;
-  if(!listening || endingCall) return;
+  if(!sessionActive() || endingCall) return;
   if(waitingForServer || playing || capturing){ armNoReply(); return; }   // busy/speaking — recheck
-  if(noReplyCount===0){ triggerReask(); }
+  if(noReplyCount < 2){ triggerReask(); }                                 // two follow-ups
   else if(!closeRequested){ closeRequested=true; sendSilent(closeNote()); }
+  else if(pack().chat){ chatActive=false; bubble(endingLine(),'assistant'); sysNote('💬 Chat closed — press ⟳ Restart to start again.'); }
   else { endingCall=true; await sayFixed(endingLine()); endCall(); }
 }
-// Contextual re-ask: hand the LLM a silent note so it repeats its last question.
+// Contextual follow-up: hand the LLM a silent note so it nudges in its own words.
 function triggerReask(){
-  if(!listening || endingCall) return;
-  noReplyCount=1;                       // re-asked once; the next timeout ends the call
-  sendSilent(reaskNote());
+  if(!sessionActive() || endingCall) return;
+  noReplyCount++;                       // two follow-ups, then the close
+  sendSilent(followupNote());
 }
-// Send a turn the customer never sees (no transcript bubble) — used for the re-ask note.
-function sendSilent(note){
+// Send a turn the customer never sees (no transcript bubble) — used for the ladder notes.
+// MUST establish the transport itself: in chat the ladder can fire before any Start/Send
+// ever opened one — without ensureWS() the note is silently dropped and the typing dots
+// spin forever.
+async function sendSilent(note){
   clearNoReply();
   showTyping(); setPill('thinking'); waitingForServer=true;
+  await ensureWS();
   if(httpMode){ postTurn({text:note, silent:true}); }
   else { wsSend({type:'turn_text', text:note, silent:true, scenario:sessionScenario, lang:sessionLang}); }
 }
@@ -660,7 +678,8 @@ function onBrokenInput(){
   if(!listening){ setPill('idle'); return; }
   if(endingCall){ endCall(); return; }
   rearm();
-  if(noReplyCount===0){ triggerReask(); }
+  if(noReplyCount < 2){ triggerReask(); }
+  else if(!closeRequested){ closeRequested=true; sendSilent(closeNote()); }
   else { endingCall=true; sayFixed(endingLine()).then(endCall); }
 }
 // Speak a fixed line via the TTS-only endpoint — no LLM call, so it never uses Gemini quota.
@@ -771,6 +790,7 @@ $('btnStop').onclick  = stopTalking;
 $('btnRestart').onclick = restart;
 $('btnSend').onclick = sendTyped;
 $('typebox').addEventListener('keydown',e=>{ if(e.key==='Enter') sendTyped(); });
+$('typebox').addEventListener('input',()=>{ if(pack().chat && chatActive) armNoReply(); });  // typing resets the ladder
 $('sens').addEventListener('input',e=>{
   const v=parseFloat(e.target.value);
   $('sensval').textContent = v<0.012?'sensitive':(v>0.026?'quiet room':'normal');
@@ -803,20 +823,20 @@ function stopTalking(){
 
 function restart(){
   clearNoReply(); noReplyCount=0; endingCall=false; clearAudioQueue();
-  httpHistory=[]; turnsSent=0; closeRequested=false; chatNudged=false;
+  httpHistory=[]; turnsSent=0; closeRequested=false; chatActive=!!pack().chat;
   // clear the visible conversation for a fresh run (CRM rows are kept — it's a CRM)
   $('convo').querySelectorAll('.msg,.typing,.empty').forEach(n=>{ if(n.id!=='convoEmpty') n.remove(); });
   const e=$('convoEmpty'); if(e) e.style.display='';
   wsSend({type:'control',action:'restart'});
-  if(pack().chat){ getOpening().then(od=>{ if(od && od.text){ bubble(od.text,'assistant'); armChatNudge(); } }); }
+  if(pack().chat){ getOpening().then(od=>{ if(od && od.text){ bubble(od.text,'assistant'); armNoReply(); } }); }
 }
 
 async function sendTyped(){
   const v=$('typebox').value.trim();
   if(!v) return;
+  if(pack().chat && !chatActive){ return; }   // chat was closed — Restart begins a fresh one
   $('typebox').value='';
-  clearNoReply(); noReplyCount=0; if(!pack().chat) endingCall=false;
-  if(chatNudgeTimer){ clearTimeout(chatNudgeTimer); chatNudgeTimer=null; } chatNudged=true;
+  clearNoReply(); noReplyCount=0; closeRequested=false; if(!pack().chat) endingCall=false;
   turnsSent++;
   await ensureWS();
   if(httpMode){ postTurn({text:v}); }
@@ -986,7 +1006,7 @@ function endOfStream(){     // server signalled the turn is finished (status idl
 function afterPlay(){
   if(endingCall){ endCall(); return; }
   if(listening){ setPill('listening'); rearm(); armNoReply(); }
-  else setPill('idle');
+  else { setPill('idle'); if(pack().chat) armNoReply(); }   // chat ladder re-arms after each reply
 }
 </script>
 </body>
