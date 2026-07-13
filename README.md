@@ -1,12 +1,11 @@
 # Verba — AI Voice & Chat Agents (a Sahayak AI product)
 
-One app, three agents in three languages, plus a live CRM and a one-screen pitch:
+One app, three agents in three languages, plus a live CRM:
 
 | Route | What it shows |
 |---|---|
 | `/` | Scenario picker → **📞 Inbound lead call** — Verba's own line answers, qualifies, books a callback · **💳 Payment reminder** — Suvidha Finserv, a polite EMI reminder that logs the outcome · **💬 WhatsApp assistant** — Ananya Clinic chat that answers instantly and books appointments. **Every scenario runs in all three languages** (language chips on each card); the defaults are EN / हिंदी / తెలుగు respectively |
-| `/crm` | **Verba CRM** — every call/chat outcome writes back here live (callbacks, promises-to-pay, appointments) |
-| `/pitch` | One-screen partnership slide (`/pitch?p=PartnerName` personalises it) |
+| `/crm` | **Verba CRM** — every call/chat outcome writes back here live (leads, promises-to-pay, appointments, enquiries) |
 
 **Stack:** Sarvam Saaras v3 (speech-to-text) · Google Gemini (brain + one tool per
 scenario, 12-key rotation) · ElevenLabs `eleven_v3` (voice, auto-falls back to Sarvam

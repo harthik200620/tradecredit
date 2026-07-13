@@ -3,7 +3,6 @@
 FastAPI app:
   GET  /              -> the agent page (scenario picker: lead call / collections / WhatsApp)
   GET  /crm           -> Verba CRM: live write-back view of every conversation outcome
-  GET  /pitch         -> one-screen partnership pitch
   GET  /config        -> which STT/TTS providers are live (the page configures itself)
   POST /api/opening   -> the line the agent speaks FIRST for a scenario (text + cached audio)
   POST /api/crm       -> recent CRM rows
@@ -68,11 +67,6 @@ async def index():
 @app.get("/crm")
 async def crm_page():
     return FileResponse(str(STATIC_DIR / "crm.html"))
-
-
-@app.get("/pitch")
-async def pitch_page():
-    return FileResponse(str(STATIC_DIR / "pitch.html"))
 
 
 @app.get("/config")
