@@ -302,10 +302,11 @@ async def api_turn(
     if not user_text:
         return {"error": "no input", "history": contents}
 
-    # Outbound calls: the customer just picked up ("Hello?"). The agent's intro is a fixed,
-    # pre-synthesized line — delivered instantly, no LLM round-trip. The prompt tells the
-    # model this line was already spoken, so the conversation continues seamlessly.
-    if sc.get("outbound") and not contents:
+    # First line of every call is fixed and pre-synthesized — delivered instantly, no LLM
+    # round-trip. Outbound: the intro after the customer's "Hello?" (or after 3s of silence —
+    # the client sends a silent marker). Inbound (clinic): the greeting the moment the agent
+    # picks up. The prompt says this line was already spoken, so the model continues from it.
+    if not contents:
         intro = opener_for(scenario, lng)
         contents.append({"role": "user", "parts": [{"text": user_text}]})
         contents.append({"role": "model", "parts": [{"text": intro}]})
@@ -386,8 +387,9 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
         await _send(ws, {"type": "transcript", "role": "user", "text": text})
     db.log_turn(sid, "user", text)
 
-    # Outbound pickup: the first customer utterance gets the fixed intro line instantly.
-    if sc.get("outbound") and not state["contents"] and not silent:
+    # First line of every call is fixed: outbound intro / inbound greeting, served instantly
+    # (silent markers from the client trigger it too — e.g. no "hello" after 3s).
+    if not state["contents"]:
         intro = opener_for(scenario, lng)
         state["contents"].append({"role": "user", "parts": [{"text": text}]})
         state["contents"].append({"role": "model", "parts": [{"text": intro}]})

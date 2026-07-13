@@ -86,41 +86,35 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
         area = str(a.get("area") or "").strip()
         if status == "not_interested":
             if lang == "hindi":
-                return ("कोई बात नहीं जी, आपके समय के लिए धन्यवाद! कभी मन बदले तो हम बस एक कॉल दूर "
-                        "हैं। आपका दिन शुभ हो! 🙏")
+                return "कोई बात नहीं जी, आपके समय के लिए धन्यवाद — मन बदले तो हम एक कॉल दूर हैं।"
             if lang == "telugu":
-                return ("పర్వాలేదు అండి, మీ time కి ధన్యవాదాలు! ఎప్పుడైనా మనసు మారితే మేము ఒక్క "
-                        "కాల్ దూరంలోనే ఉంటాము. మీ రోజు శుభంగా గడవాలి! 🙏")
-            return ("No problem at all — thank you for your time! If you change your mind, "
-                    "we're just a call away. Have a great day! 🙏")
+                return "పర్వాలేదు అండి, ధన్యవాదాలు — మనసు మారితే ఒక్క కాల్ చేయండి."
+            return "No problem, thank you for your time — we're just a call away if you change your mind."
         if status == "call_later":
             if lang == "hindi":
-                return "ज़रूर जी — हम आपको बाद में कॉल कर लेंगे। धन्यवाद, आपका दिन शुभ हो! 🙏"
+                return "ज़रूर जी — हम बाद में कॉल कर लेंगे। धन्यवाद!"
             if lang == "telugu":
-                return "తప్పకుండా అండి — మేము మీకు తర్వాత కాల్ చేస్తాము. ధన్యవాదాలు! 🙏"
-            return "Of course — we'll call you back at a better time. Thank you, have a great day! 🙏"
+                return "తప్పకుండా అండి — తర్వాత కాల్ చేస్తాము. ధన్యవాదాలు!"
+            return "Of course — we'll call you back later. Thank you!"
         # interested
         if lang == "hindi":
             ar = f"{area} में " if area else ""
-            return (f"बहुत बढ़िया! {ar}आपके बजट में कुछ बेहद खूबसूरत options available हैं। इन सभी "
-                    "details के लिए धन्यवाद — हमारी property expert team जल्द ही आपसे connect "
-                    "करेगी। आपका दिन शुभ हो! 🙏")
+            return (f"{ar}आपके बजट में बेहद खूबसूरत options हैं! धन्यवाद — हमारी property expert "
+                    "team जल्द आपसे connect करेगी।")
         if lang == "telugu":
             ar = f"{area} లో " if area else ""
-            return (f"చాలా బాగుంది అండి! {ar}మీ budget లో చాలా అందమైన options available ఉన్నాయి. "
-                    "ఈ details అన్నింటికీ ధన్యవాదాలు — మా property expert team త్వరలో మిమ్మల్ని "
-                    "contact చేస్తుంది. మీ రోజు శుభంగా గడవాలి! 🙏")
+            return (f"{ar}మీ budget లో చాలా అందమైన options ఉన్నాయి అండి! ధన్యవాదాలు — మా property "
+                    "expert team త్వరలో contact చేస్తుంది.")
         ar = f" in {area}" if area else ""
-        return (f"Wonderful! There are some beautiful options available{ar} within your budget. "
-                "Thank you for all these details — our property expert team will connect with "
-                "you shortly. Have a great day! 🙏")
+        return (f"There are beautiful options{ar} at that budget! Thank you — our property "
+                "expert team will connect with you shortly.")
 
     if tool == "log_enquiry":
         if lang == "hindi":
-            return "ज़रूर जी! कभी भी मैसेज कीजिए — appointment भी मैं तुरंत बुक कर दूँगी। 🙏"
+            return "ज़रूर जी — जब चाहें कॉल कीजिए, appointment तुरंत बुक हो जाएगी।"
         if lang == "telugu":
-            return "తప్పకుండా అండి! ఎప్పుడైనా message చేయండి — appointment కూడా వెంటనే బుక్ చేస్తాను. 🙏"
-        return "Anytime! Message me whenever you like — I can book an appointment in seconds. 🙏"
+            return "తప్పకుండా అండి — ఎప్పుడైనా కాల్ చేయండి, appointment వెంటనే బుక్ చేస్తాను."
+        return "Anytime — call us whenever you like and I'll book you in."
 
     if tool == "log_payment_outcome":
         outcome = str(a.get("outcome") or "").strip().lower()
@@ -128,59 +122,44 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
         if lang == "hindi":
             if outcome == "promise_to_pay":
                 dt = f" {ptp} को" if ptp else ""
-                return (f"बहुत बढ़िया जी, मैंने नोट कर लिया है —{dt} पेमेंट। पेमेंट लिंक अभी WhatsApp पर "
-                        "भेज रही हूँ। धन्यवाद, आपका दिन शुभ हो! 🙏")
+                return f"बहुत बढ़िया जी —{dt} पेमेंट नोट कर लिया, लिंक WhatsApp पर भेज रही हूँ। धन्यवाद!"
             if outcome == "already_paid":
-                return ("जी, धन्यवाद! मैंने नोट कर लिया है — हमारी टीम पेमेंट वेरीफाई कर लेगी। कोई भी "
-                        "मदद चाहिए हो तो WhatsApp पर मैसेज कर दीजिए। 🙏")
+                return "जी, धन्यवाद — नोट कर लिया, टीम पेमेंट वेरीफाई कर लेगी।"
             if outcome == "needs_time":
-                dt = f"आप {ptp} तक कर दीजिएगा — " if ptp else ""
-                return (f"कोई बात नहीं जी, मैं समझती हूँ। {dt}पेमेंट लिंक WhatsApp पर रहेगा, जब सुविधा "
-                        "हो कर दीजिएगा। धन्यवाद! 🙏")
+                dt = f"{ptp} तक कर दीजिएगा — " if ptp else ""
+                return f"कोई बात नहीं जी। {dt}लिंक WhatsApp पर रहेगा। धन्यवाद!"
             if outcome == "dispute":
-                return ("मुझे खेद है जी — मैंने आपकी बात नोट कर ली है, हमारे अधिकारी जल्द ही आपसे संपर्क "
-                        "करेंगे। धन्यवाद, आपका दिन शुभ हो। 🙏")
+                return "खेद है जी — नोट कर लिया, हमारे अधिकारी जल्द संपर्क करेंगे। धन्यवाद।"
             if outcome == "callback_requested":
-                return "ज़रूर जी, हमारे अधिकारी आपको कॉल कर लेंगे। धन्यवाद, आपका दिन शुभ हो! 🙏"
-            return ("ठीक है जी, मैंने नोट कर लिया है। पेमेंट लिंक WhatsApp पर भेज रही हूँ, जब सुविधा हो "
-                    "कर दीजिएगा। धन्यवाद! 🙏")
+                return "ज़रूर जी, हमारे अधिकारी आपको कॉल कर लेंगे। धन्यवाद!"
+            return "ठीक है जी — नोट कर लिया, लिंक WhatsApp पर भेज रही हूँ। धन्यवाद!"
         if lang == "telugu":
             if outcome == "promise_to_pay":
                 dt = f" {ptp} కి" if ptp else ""
-                return (f"చాలా మంచిది అండి, note చేసుకున్నాను —{dt} payment. Payment link ఇప్పుడే "
-                        "WhatsApp లో పంపిస్తున్నాను. ధన్యవాదాలు, మీ రోజు శుభంగా గడవాలి! 🙏")
+                return f"చాలా మంచిది అండి —{dt} payment note చేశాను, link WhatsApp లో పంపిస్తున్నాను. ధన్యవాదాలు!"
             if outcome == "already_paid":
-                return ("ధన్యవాదాలు అండి! Note చేసుకున్నాను — మా team payment verify చేస్తుంది. "
-                        "ఏదైనా కావాలంటే WhatsApp లో message చేయండి. 🙏")
+                return "ధన్యవాదాలు అండి — note చేశాను, మా team verify చేస్తుంది."
             if outcome == "needs_time":
                 dt = f"{ptp} లోపు చేసేయండి — " if ptp else ""
-                return (f"పర్వాలేదు అండి, అర్థమైంది. {dt}payment link WhatsApp లో ఉంటుంది, "
-                        "వీలున్నప్పుడు చేయండి. ధన్యవాదాలు! 🙏")
+                return f"పర్వాలేదు అండి. {dt}link WhatsApp లో ఉంటుంది. ధన్యవాదాలు!"
             if outcome == "dispute":
-                return ("క్షమించండి అండి — మీ మాట note చేసుకున్నాను, మా officer త్వరలో మీకు కాల్ "
-                        "చేస్తారు. ధన్యవాదాలు. 🙏")
+                return "క్షమించండి అండి — note చేశాను, మా officer త్వరలో కాల్ చేస్తారు."
             if outcome == "callback_requested":
-                return "తప్పకుండా అండి, మా officer మీకు కాల్ చేస్తారు. ధన్యవాదాలు! 🙏"
-            return ("సరే అండి, note చేసుకున్నాను. Payment link WhatsApp లో పంపిస్తున్నాను, "
-                    "వీలున్నప్పుడు చేయండి. ధన్యవాదాలు! 🙏")
+                return "తప్పకుండా అండి, మా officer మీకు కాల్ చేస్తారు. ధన్యవాదాలు!"
+            return "సరే అండి — note చేశాను, link WhatsApp లో పంపిస్తున్నాను. ధన్యవాదాలు!"
         if outcome == "promise_to_pay":
             dt = f" for {ptp}" if ptp else ""
-            return (f"That's great — I've noted the payment{dt}. I'm sending the payment link on "
-                    "WhatsApp right away. Thank you, and have a good day! 🙏")
+            return f"Noted{dt} — the payment link is on its way on WhatsApp. Thank you!"
         if outcome == "already_paid":
-            return ("Thank you! I've noted it — our team will verify the payment. If you need "
-                    "anything, just message us on WhatsApp. 🙏")
+            return "Thank you — noted; our team will verify the payment."
         if outcome == "needs_time":
-            dt = f"You could pay by {ptp} — " if ptp else ""
-            return (f"No problem at all, I understand. {dt}the payment link will stay on "
-                    "WhatsApp; pay whenever it's convenient. Thank you! 🙏")
+            dt = f"pay by {ptp} if you can — " if ptp else ""
+            return f"No problem at all — {dt}the link will stay on WhatsApp. Thank you!"
         if outcome == "dispute":
-            return ("I'm sorry for the trouble — I've noted your concern, and one of our "
-                    "officers will call you shortly. Thank you, have a good day. 🙏")
+            return "I'm sorry for the trouble — noted; an officer will call you shortly."
         if outcome == "callback_requested":
-            return "Of course — one of our officers will call you. Thank you, have a good day! 🙏"
-        return ("Alright, I've noted it. I'm sending the payment link on WhatsApp — pay "
-                "whenever it's convenient. Thank you! 🙏")
+            return "Of course — one of our officers will call you. Thank you!"
+        return "Alright, noted — the payment link is on WhatsApp. Thank you!"
 
     if tool == "book_appointment":
         service = str(a.get("service") or "appointment").strip()
@@ -189,17 +168,14 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
         if lang == "hindi":
             who = f"{name} जी, " if name else ""
             dt = f" {when} के लिए" if when else ""
-            return (f"{who}आपकी {service} appointment{dt} confirm हो गई है! ✅ Confirmation "
-                    "WhatsApp पर आ जाएगा। धन्यवाद! 🙏")
+            return f"{who}आपकी {service} appointment{dt} confirm — details WhatsApp पर आएँगी। धन्यवाद!"
         if lang == "telugu":
             who = f"{name} గారు, " if name else ""
             dt = f" {when} కి" if when else ""
-            return (f"{who}మీ {service} appointment{dt} confirm అయ్యింది! ✅ Confirmation "
-                    "WhatsApp లో వచ్చేస్తుంది. ధన్యవాదాలు 🙏")
+            return f"{who}మీ {service} appointment{dt} confirm అయ్యింది — details WhatsApp లో వస్తాయి. ధన్యవాదాలు!"
         who = f"{name}, " if name else ""
         dt = f" for {when}" if when else ""
-        return (f"{who}your {service} appointment is confirmed{dt}! ✅ You'll get the "
-                "confirmation on WhatsApp. Thank you! 🙏")
+        return f"{who}your {service} appointment is confirmed{dt} — details on WhatsApp. Thank you!"
 
     return {"telugu": "సరే అండి, అయ్యింది.", "hindi": "ठीक है जी, हो गया।"}.get(lang, "Done.")
 
