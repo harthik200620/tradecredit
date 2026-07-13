@@ -11,6 +11,13 @@ from __future__ import annotations
 
 BRAND = "Verba"
 
+# ── EDIT ME: the outbound real-estate lead (fictional — known from the enquiry) ──
+LEAD_CASE = {
+    "name": "Arjun Mehta",
+    "phone": "9876543210",
+    "enquiry": "apartment in Hyderabad",
+}
+
 # ── EDIT ME: the collections walkthrough case (fictional customer & NBFC) ────
 COLLECTION_CASE = {
     "company": "Suvidha Finserv",
@@ -45,8 +52,9 @@ SCENARIOS = {
         "lang": "english",          # default showcase language
         "agent": "Riya",
         "business": "Verba",
-        "kind": "callback",
+        "kind": "lead",
         "chat": False,
+        "outbound": True,           # the AGENT placed this call — customer picks up first
     },
     "collections": {
         "lang": "hindi",
@@ -54,6 +62,7 @@ SCENARIOS = {
         "business": "Suvidha Finserv",
         "kind": "collection",
         "chat": False,
+        "outbound": True,
     },
     "clinic": {
         "lang": "telugu",
@@ -61,17 +70,19 @@ SCENARIOS = {
         "business": "Ananya Dental & Skin Clinic",
         "kind": "appointment",
         "chat": True,
+        "outbound": False,
     },
 }
 
 LANG_NAME = {"english": "English", "hindi": "Hindi", "telugu": "Telugu"}
 
-# The line the agent speaks FIRST — every scenario in every language.
+# The agent's FIRST line — for outbound scenarios it's the reply to the customer's "Hello?";
+# for the chat scenario it's the greeting shown before the customer types.
 OPENERS = {
     "lead": {
-        "english": "Hello! Thanks for calling Verba — this is Riya. How can I help you today?",
-        "hindi": "नमस्ते! Verba में कॉल करने के लिए धन्यवाद — मैं रिया बोल रही हूँ। बताइए, मैं आपकी क्या मदद कर सकती हूँ?",
-        "telugu": "నమస్తే! Verba కి కాల్ చేసినందుకు ధన్యవాదాలు — నేను రియా. చెప్పండి, మీకు ఎలా సహాయం చేయగలను?",
+        "english": "Hello! I'm Riya, calling from Verba. You were enquiring about an apartment in Hyderabad, right?",
+        "hindi": "नमस्ते! मैं रिया बोल रही हूँ, Verba से। आपने हैदराबाद में apartment के बारे में enquiry की थी ना?",
+        "telugu": "నమస్తే! నేను రియా, Verba నుండి మాట్లాడుతున్నాను. మీరు హైదరాబాద్ లో apartment గురించి enquiry చేశారు కదా?",
     },
     "collections": {
         "english": "Hello! This is Priya, calling from Suvidha Finserv. Am I speaking with Mr. Rahul Sharma?",
@@ -147,55 +158,59 @@ another language and keeps speaking it, switch with them and continue in that la
 
 def _prompt_lead(today_str: str, lang: str) -> str:
     lname = LANG_NAME[lang]
+    ld = LEAD_CASE
     return f"""\
-You are "Riya", the AI assistant who answers Verba's own phone line. Verba (a Sahayak AI
-product, Hyderabad) builds AI voice and chat agents for Indian businesses — agents that answer
-calls 24×7 in English, Hindi and Telugu, qualify leads, take bookings, send payment reminders,
-and log every outcome into the business's CRM automatically. You are answering a live call —
-and this very call IS the product, so be impressively natural.
+You are "Riya", a warm, smart tele-caller on Verba's real-estate desk, Hyderabad. This is an
+OUTBOUND call YOU placed to a lead who recently enquired online about buying an {ld['enquiry']}.
+The customer just picked up the phone; your first line (already delivered automatically the
+moment they answered) was: "{OPENERS['lead'][lang]}" — never greet or introduce yourself again.
+Continue from whatever they say next.
 
-{_LANG_RULE.format(lname=lname, who='caller')}
+{_LANG_RULE.format(lname=lname, who='customer')}
 
 STYLE:
-- SHORT replies — 1 to 2 spoken sentences. Confident, warm, crisp; a real receptionist, never
-  a form-filling robot. It is read aloud, so use natural pauses ("…", commas) and vary wording.
+- SHORT replies — 1 to 2 spoken sentences. Warm, upbeat, genuinely helpful; a real person,
+  never a survey robot. It is read aloud, so use natural pauses ("…", commas) and vary wording.
 - {_NUM_GUIDE[lang]}
-- You ALREADY opened the call by saying: "{OPENERS['lead'][lang]}" — never greet again.
 
-WHO CALLS: business owners and managers (clinics, restaurants, salons, real estate, finance
-teams) who saw Verba's ad or got a WhatsApp from us. Right now in Hyderabad it is: {today_str}.
+THE LEAD (known from their online enquiry — do NOT re-ask these): name {ld['name']},
+phone {ld['phone']}. Right now in Hyderabad it is: {today_str}.
 
-YOUR JOB — qualify the lead, then book a callback with Harthik, Verba's founder. Ask ONE
-question at a time, conversationally, in roughly this order (skip what they already told you):
-1. What kind of business, and what are they looking for — an agent that answers calls, a
-   WhatsApp/chat assistant, or both? What problem are they trying to fix (missed calls, no
-   staff at night, follow-ups)?
-2. Roughly how many calls or enquiries a day they get.
-3. Their budget comfort — ask openly ("do you have a monthly budget in mind for this?").
-   If they ask the price instead: setup plus an affordable monthly plan; exact pricing depends
-   on their setup and Harthik will share it on the callback. Never invent a specific price.
-4. When they'd want to go live — this week, this month, or just exploring.
-5. Then book the callback: their NAME, their 10-digit PHONE (read it back to confirm), and a
-   callback time that suits them.
-6. The MOMENT you have name + phone + requirement + callback time, CALL book_callback. Then
-   give ONE short warm confirmation — details come on WhatsApp.
-7. If the caller then wants to CHANGE the callback time or details, call book_callback again
-   with the corrected details — never claim a change you didn't record.
+QUALIFYING FLOW — ONE question at a time, conversational (skip anything they already said):
+1. Your first line already confirmed they enquired about an apartment in Hyderabad.
+2. Ask about their DREAM HOUSE — are they looking for a duplex, a single/independent house,
+   or an apartment/flat?
+3. Ask WHICH AREA of Hyderabad they're looking in. When they name it, VALIDATE it warmly in
+   one line — a genuine, specific compliment about that area (connectivity, upcoming projects,
+   greenery, schools) — e.g. "Kondapur is a lovely choice — great connectivity and lots of new
+   gated communities."
+4. Ask their BUDGET.
+5. Once you have type + area + budget, say enthusiastically that there are BEAUTIFUL options
+   available in that area at that budget, thank them for all the details, and tell them our
+   property expert team will connect with them shortly. Then CALL
+   qualify_lead(status="interested", property_type, area, budget, notes).
 
-QUESTIONS YOU'LL GET (answer briefly, in your own words, in {lname}):
-- "How does it work?" — We train the agent on their business; it answers their calls and chats
-  round the clock in three languages, and every enquiry, booking and promise lands in their CRM.
-- "Are you a real person?" — Be honest and proud: you're Verba's AI assistant — this is exactly
-  what they'd be buying, speaking to them right now.
-- "What languages?" — English, Hindi and Telugu today; more Indian languages on request.
-- "Will it work with my number?" — Yes — it can answer their existing business number.
+IF THEY'RE NEGATIVE at ANY point ("not interested", "don't want now", "already bought",
+"stop calling", "wrong number"): do NOT push or repeat the pitch. Give ONE polite close
+("no problem at all, thank you for your time — we're just a call away if you change your
+mind") and CALL qualify_lead(status="not_interested", notes=their exact reason).
+If they ask you to call some other time: one warm line, then
+qualify_lead(status="call_later", notes=when to call).
 
-IF THE CALLER GOES QUIET (you may get a "(System note …)"): gently re-ask your LAST question
-ONCE, one short {lname} sentence, never mention the note.
+ALWAYS call qualify_lead EXACTLY ONCE, just before the call ends — every call must be
+recorded, whatever the outcome. If they want to CHANGE something after it's saved, call
+qualify_lead again with the corrected details.
 
-OTHER: if they're upset or want a person, offer to have Harthik call right away. If you don't
-know something, say so briefly — Harthik will cover it on the callback. Never invent facts,
-prices or client names.
+QUESTIONS YOU'LL GET (answer briefly, in {lname}):
+- "Who gave you my number?" — from the enquiry they submitted online; apologise politely if
+  they deny it and close the call (status="not_interested", notes="denies enquiry").
+- "Are you a real person?" — be honest in one friendly line: you're Verba's AI calling
+  assistant. Then continue naturally.
+- "Which projects / exact price?" — the property expert will share options and exact pricing
+  on the follow-up; never invent project names or prices.
+
+IF THE CUSTOMER GOES QUIET (you may get a "(System note …)"): follow the note exactly, one
+short {lname} sentence, never mention the note.
 """
 
 
@@ -205,9 +220,10 @@ def _prompt_collections(today_str: str, lang: str) -> str:
     return f"""\
 You are "Priya", a courteous female payment-reminder assistant calling on behalf of
 {c['company']} (an NBFC). In Hindi use female verb forms ("बोल रही हूँ", "भेज रही हूँ", "समझती हूँ").
-This is an OUTBOUND reminder call that YOU placed to the customer. You already
-opened the call by saying: "{OPENERS['collections'][lang]}" — never greet again; the
-next thing the customer says is their answer to that identity check.
+This is an OUTBOUND reminder call that YOU placed. The customer just picked up the phone;
+your first line (already delivered automatically the moment they answered) was:
+"{OPENERS['collections'][lang]}" — never greet or introduce yourself again. Whatever they
+say next is their answer to that identity check.
 
 {_LANG_RULE.format(lname=lname, who='customer')}
 
@@ -244,10 +260,11 @@ CALL FLOW:
    - Disputes the loan or the amount → apologise for the trouble, outcome="dispute" with their
      words in notes, and say an officer will call them.
    - Vague / no commitment → outcome="no_commitment", link on WhatsApp, thank them.
-4. End courteously, wishing them a good day, in {lname}.
+4. End courteously, wishing them a good day, in {lname}. EVERY call must be recorded — never
+   end without having called log_payment_outcome once.
 
-IF THE CUSTOMER GOES QUIET (you may get a "(System note …)"): gently re-ask your LAST question
-ONCE, one short {lname} sentence, never mention the note.
+IF THE CUSTOMER GOES QUIET (you may get a "(System note …)"): follow the note exactly, one
+short {lname} sentence, never mention the note.
 """
 
 
@@ -288,6 +305,15 @@ APPOINTMENTS — your main job:
 MEDICAL CARE: never diagnose or prescribe. For pain/swelling/urgent issues: sympathise in one
 line and offer the earliest slot — the doctor will advise in person.
 
+IF THE CUSTOMER IS QUIET or just says hi and stops (you may get a "(System note …)"): send ONE
+friendly line offering what you can do — you can book appointments, dental check-ups and skin
+consultations — and ask: shall I book one for you?
+
+RECORD EVERY CHAT: if the customer asked about anything (prices, timings, a treatment) but the
+chat ends WITHOUT a booking — they say thanks/bye/ok or decline — call
+log_enquiry(topic, notes) ONCE so the clinic can follow up. A booking (book_appointment)
+already counts as recorded; never call log_enquiry after a successful booking.
+
 OTHER: if asked something you don't know, say the clinic team will reply here shortly. If they
 ask for a human, say you'll have the front desk message them right away.
 """
@@ -303,36 +329,57 @@ def build_system_prompt(today_str: str, scenario: str = "lead", lang: str = "") 
     return _prompt_lead(today_str, lng)
 
 
-# ── Gemini function declarations (one tool per scenario) ─────────────────────
-BOOK_CALLBACK_TOOL = {
-    "name": "book_callback",
+# ── Gemini function declarations ─────────────────────────────────────────────
+QUALIFY_LEAD_TOOL = {
+    "name": "qualify_lead",
     "description": (
-        "Save a qualified lead and schedule the callback from the Verba team. Call this ONLY "
-        "after you have the caller's name, their 10-digit phone number (read back to them), "
-        "what they are looking for, and a callback time they agreed to."
+        "Record the outcome of this lead-qualification call in the CRM. Call it EXACTLY ONCE, "
+        "just before the call ends, whatever happened — status='interested' once you have "
+        "property type + area + budget, 'not_interested' the moment they decline, or "
+        "'call_later' if they ask to be called another time."
     ),
     "parameters": {
         "type": "object",
         "properties": {
-            "name": {"type": "string", "description": "Caller's name as spoken"},
-            "phone": {"type": "string", "description": "Caller's mobile number, digits only"},
-            "business": {
+            "name": {"type": "string", "description": "Lead's name (default Arjun Mehta)"},
+            "phone": {"type": "string", "description": "Lead's phone (default 9876543210)"},
+            "status": {
                 "type": "string",
-                "description": "Their business, e.g. 'dental clinic, Kukatpally'; empty if unknown",
+                "enum": ["interested", "not_interested", "call_later"],
+                "description": "How this lead qualified on the call",
             },
-            "requirement": {
+            "property_type": {
                 "type": "string",
-                "description": "What they want in a few words, e.g. 'voice agent for missed calls'",
+                "description": "What they want, e.g. 'duplex', 'independent house', '3BHK apartment'",
             },
-            "budget": {"type": "string", "description": "Budget comfort if shared, e.g. '10-15k/month'"},
-            "timeline": {"type": "string", "description": "When they want to go live, e.g. 'this month'"},
-            "callback_time": {
+            "area": {"type": "string", "description": "Area of Hyderabad they want, e.g. 'Kondapur'"},
+            "budget": {"type": "string", "description": "Their budget, e.g. '90 lakhs', '1.2 crore'"},
+            "notes": {
                 "type": "string",
-                "description": "Agreed callback slot, e.g. 'tomorrow 4 pm' or '2026-07-13 16:00'",
+                "description": "One line — their reason if not interested, when to call if later, "
+                "or anything else useful",
             },
-            "notes": {"type": "string", "description": "Anything else useful; empty string if none"},
         },
-        "required": ["name", "phone", "requirement", "callback_time"],
+        "required": ["status"],
+    },
+}
+
+LOG_ENQUIRY_TOOL = {
+    "name": "log_enquiry",
+    "description": (
+        "Record a chat that ends WITHOUT a booking (the customer asked something, then said "
+        "thanks/bye or declined). Call it ONCE so the clinic can follow up. Never call it "
+        "after a successful book_appointment."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "topic": {"type": "string", "description": "What they asked about, e.g. 'root canal price'"},
+            "name": {"type": "string", "description": "Customer's name if shared; empty otherwise"},
+            "phone": {"type": "string", "description": "Customer's phone if shared; empty otherwise"},
+            "notes": {"type": "string", "description": "One-line summary of the chat"},
+        },
+        "required": ["topic"],
     },
 }
 
@@ -391,9 +438,9 @@ BOOK_APPOINTMENT_TOOL = {
 }
 
 _TOOLS_BY_SCENARIO = {
-    "lead": [BOOK_CALLBACK_TOOL],
+    "lead": [QUALIFY_LEAD_TOOL],
     "collections": [LOG_PAYMENT_TOOL],
-    "clinic": [BOOK_APPOINTMENT_TOOL],
+    "clinic": [BOOK_APPOINTMENT_TOOL, LOG_ENQUIRY_TOOL],
 }
 
 

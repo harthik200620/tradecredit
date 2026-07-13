@@ -1,9 +1,9 @@
 """The agent brain: Google Gemini with function-calling, scenario-aware.
 
 gemini_turn() appends the user's utterance to the running conversation, calls Gemini with the
-active scenario's system prompt + single tool (book_callback / log_payment_outcome /
-book_appointment), runs the matching handler (which writes the CRM row and pushes it to the
-page), and returns the agent's reply. `contents` is mutated in place to persist history.
+active scenario's system prompt + tools (qualify_lead / log_payment_outcome /
+book_appointment + log_enquiry), runs the matching handler (which writes the CRM row and
+pushes it to the page), and returns the agent's reply. `contents` is mutated in place.
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from . import _http
-from .prompts import build_system_prompt, tools_for, norm_lang, COLLECTION_CASE, CLINIC_HOURS
+from .prompts import build_system_prompt, tools_for, norm_lang, COLLECTION_CASE, CLINIC_HOURS, LEAD_CASE
 
 def _clean(name: str, default: str = "") -> str:
     """Read an env var, removing BOM/zero-width chars plus quotes/whitespace."""
@@ -57,9 +57,10 @@ _URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generate
 
 # Fields each tool needs before it may fire; the server enforces this even if the model rushes.
 _REQUIRED_BY_TOOL = {
-    "book_callback": ("name", "phone", "requirement", "callback_time"),
+    "qualify_lead": ("status",),
     "log_payment_outcome": ("outcome",),
     "book_appointment": ("name", "phone", "service", "date", "time"),
+    "log_enquiry": ("topic",),
 }
 
 
@@ -80,22 +81,46 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
     lang = lang if lang in ("english", "hindi", "telugu") else "english"
     name = str(a.get("name") or "").strip()
 
-    if tool == "book_callback":
-        when = str(a.get("callback_time") or "").strip()
+    if tool == "qualify_lead":
+        status = str(a.get("status") or "").strip().lower()
+        area = str(a.get("area") or "").strip()
+        if status == "not_interested":
+            if lang == "hindi":
+                return ("कोई बात नहीं जी, आपके समय के लिए धन्यवाद! कभी मन बदले तो हम बस एक कॉल दूर "
+                        "हैं। आपका दिन शुभ हो! 🙏")
+            if lang == "telugu":
+                return ("పర్వాలేదు అండి, మీ time కి ధన్యవాదాలు! ఎప్పుడైనా మనసు మారితే మేము ఒక్క "
+                        "కాల్ దూరంలోనే ఉంటాము. మీ రోజు శుభంగా గడవాలి! 🙏")
+            return ("No problem at all — thank you for your time! If you change your mind, "
+                    "we're just a call away. Have a great day! 🙏")
+        if status == "call_later":
+            if lang == "hindi":
+                return "ज़रूर जी — हम आपको बाद में कॉल कर लेंगे। धन्यवाद, आपका दिन शुभ हो! 🙏"
+            if lang == "telugu":
+                return "తప్పకుండా అండి — మేము మీకు తర్వాత కాల్ చేస్తాము. ధన్యవాదాలు! 🙏"
+            return "Of course — we'll call you back at a better time. Thank you, have a great day! 🙏"
+        # interested
         if lang == "hindi":
-            who = f"{name} जी, " if name else ""
-            dt = f" {when} के लिए" if when else ""
-            return (f"बहुत बढ़िया, {who}आपका callback{dt} बुक हो गया है — Verba से हार्थिक आपको कॉल "
-                    "करेंगे। Confirmation अभी WhatsApp पर आ जाएगा। Verba को कॉल करने के लिए धन्यवाद!")
+            ar = f"{area} में " if area else ""
+            return (f"बहुत बढ़िया! {ar}आपके बजट में कुछ बेहद खूबसूरत options available हैं। इन सभी "
+                    "details के लिए धन्यवाद — हमारी property expert team जल्द ही आपसे connect "
+                    "करेगी। आपका दिन शुभ हो! 🙏")
         if lang == "telugu":
-            who = f"{name} గారు, " if name else ""
-            dt = f" {when} కి" if when else ""
-            return (f"{who}మీ callback{dt} book అయ్యింది — Verba నుండి Harthik మీకు కాల్ చేస్తారు. "
-                    "Confirmation WhatsApp లో వచ్చేస్తుంది. Verba కి కాల్ చేసినందుకు ధన్యవాదాలు!")
-        who = f"{name}, " if name else ""
-        dt = f" for {when}" if when else ""
-        return (f"Perfect, {who}your callback is booked{dt} — Harthik from Verba will call "
-                f"you then. You'll get a WhatsApp confirmation right away. Thanks for calling Verba!")
+            ar = f"{area} లో " if area else ""
+            return (f"చాలా బాగుంది అండి! {ar}మీ budget లో చాలా అందమైన options available ఉన్నాయి. "
+                    "ఈ details అన్నింటికీ ధన్యవాదాలు — మా property expert team త్వరలో మిమ్మల్ని "
+                    "contact చేస్తుంది. మీ రోజు శుభంగా గడవాలి! 🙏")
+        ar = f" in {area}" if area else ""
+        return (f"Wonderful! There are some beautiful options available{ar} within your budget. "
+                "Thank you for all these details — our property expert team will connect with "
+                "you shortly. Have a great day! 🙏")
+
+    if tool == "log_enquiry":
+        if lang == "hindi":
+            return "ज़रूर जी! कभी भी मैसेज कीजिए — appointment भी मैं तुरंत बुक कर दूँगी। 🙏"
+        if lang == "telugu":
+            return "తప్పకుండా అండి! ఎప్పుడైనా message చేయండి — appointment కూడా వెంటనే బుక్ చేస్తాను. 🙏"
+        return "Anytime! Message me whenever you like — I can book an appointment in seconds. 🙏"
 
     if tool == "log_payment_outcome":
         outcome = str(a.get("outcome") or "").strip().lower()
@@ -201,7 +226,7 @@ def _validate_args(tool: str, args: dict) -> str | None:
                             "to that day and offer the nearest slot inside the timings.")
             except ValueError:
                 pass
-    if tool in ("book_callback", "book_appointment"):
+    if tool == "book_appointment":
         nm = str(args.get("name") or "").strip()
         if len(nm) < 2 or nm.lower() in _JUNK_NAMES:
             return ("Invalid name — you must ASK the caller for their real name. Never invent "
@@ -320,6 +345,9 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict, scenario: 
                 args.setdefault("customer_name", COLLECTION_CASE["customer"])
                 args.setdefault("loan_ref", COLLECTION_CASE["loan_ref"])
                 args.setdefault("amount", COLLECTION_CASE["amount"])
+            if name == "qualify_lead":          # the lead's identity is known from the enquiry
+                args.setdefault("name", LEAD_CASE["name"])
+                args.setdefault("phone", LEAD_CASE["phone"])
             missing = [k for k in _REQUIRED_BY_TOOL.get(name, ()) if not args.get(k)]
             if missing:
                 response = {

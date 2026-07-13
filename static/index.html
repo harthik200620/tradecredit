@@ -74,6 +74,8 @@
   .bk.col .badge{background:#E8A33D}
   .bk.apt{border-left-color:var(--ok)}
   .bk.apt .badge{background:var(--ok)}
+  .bk.enq{border-left-color:#8A8FF0}
+  .bk.enq .badge{background:#8A8FF0}
   .bk .top{display:flex;align-items:baseline;gap:8px}
   .bk .nm{font-family:'Fraunces',serif;font-weight:600;font-size:16px;color:var(--green-deep)}
   .bk .badge{margin-left:auto;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:var(--copper);border-radius:999px;padding:3px 9px;white-space:nowrap}
@@ -178,7 +180,7 @@
     <div class="scns">
       <button class="scn" data-scene="lead" data-default="english">
         <span class="ic">📞</span>
-        <span class="tx"><b>Inbound lead call</b><small>Verba answers its own line — qualifies the caller, books the callback.</small>
+        <span class="tx"><b>Outbound lead call</b><small>Riya calls an apartment enquiry — dream house, area, budget — and qualifies it interested or not.</small>
           <span class="chips"><span class="chip on" data-lang="english">English</span><span class="chip" data-lang="hindi">हिंदी</span><span class="chip" data-lang="telugu">తెలుగు</span></span>
         </span>
       </button>
@@ -190,7 +192,7 @@
       </button>
       <button class="scn" data-scene="clinic" data-default="telugu">
         <span class="ic">💬</span>
-        <span class="tx"><b>WhatsApp assistant</b><small>Ananya Clinic — instant answers, books the appointment in chat.</small>
+        <span class="tx"><b>WhatsApp assistant</b><small>Ananya Clinic — instant answers, bookings, and every chat recorded.</small>
           <span class="chips"><span class="chip" data-lang="english">English</span><span class="chip" data-lang="hindi">हिंदी</span><span class="chip on" data-lang="telugu">తెలుగు</span></span>
         </span>
       </button>
@@ -287,29 +289,29 @@ const LANGS = {
 };
 const SCENARIO_PACK = {
   lead: {
-    default:'english', chat:false,
+    default:'english', chat:false, outbound:true,
     who:'Riya · Verba',
-    h1:'Verba', sub:'Inbound line — answers, qualifies &amp; books the callback',
+    h1:'Verba', sub:'Outbound lead call — qualifies the enquiry, records the outcome',
     convoTitle:'Live call',
-    big:'Ring ring… ☎️',
-    startLabel:'📞 Start call',
+    big:'Incoming call ☎️',
+    startLabel:'📞 Answer call',
     hints:{
-      english:'Press <b>📞 Start call</b> — Riya picks up. Talk like a caller: <i>"Hi, I run a dental clinic — I keep missing patient calls."</i> She\'ll qualify you and book a callback.',
-      hindi:'Press <b>📞 Start call</b> — रिया कॉल उठाती है। ग्राहक की तरह बोलिए: <i>"नमस्ते, मेरा जिम है — रात की कॉल्स मिस हो जाती हैं।"</i> वह qualify करके callback बुक करेगी।',
-      telugu:'Press <b>📞 Start call</b> — రియా కాల్ ఎత్తుతుంది. కస్టమర్ లా మాట్లాడండి: <i>"నాకు ఒక క్లినిక్ ఉంది — రాత్రి కాల్స్ మిస్ అవుతున్నాయి."</i> ఆమె qualify చేసి callback బుక్ చేస్తుంది.',
+      english:'Press <b>📞 Answer call</b> and say <i>"Hello?"</i> — Riya introduces herself and qualifies you: dream house, area, budget. Play along… or say <i>"not interested"</i> and watch the CRM.',
+      hindi:'Press <b>📞 Answer call</b> और कहिए <i>"हैलो?"</i> — रिया खुद को introduce करके qualify करेगी: dream house, area, budget। साथ दीजिए… या <i>"अभी नहीं चाहिए"</i> कहकर CRM देखिए।',
+      telugu:'Press <b>📞 Answer call</b> చెప్పండి <i>"హలో?"</i> — రియా పరిచయం చేసుకుని qualify చేస్తుంది: dream house, area, budget. లేదా <i>"ఇప్పుడు వద్దు అండి"</i> అని చెప్పి CRM చూడండి.',
     },
   },
   collections: {
-    default:'hindi', chat:false,
+    default:'hindi', chat:false, outbound:true,
     who:'Priya · Suvidha Finserv',
     h1:'Suvidha Finserv', sub:'Payment reminder call · powered by Verba',
     convoTitle:'Live call',
     big:'Incoming call 💳',
     startLabel:'📞 Answer call',
     hints:{
-      english:'Press <b>📞 Answer call</b> — Priya is calling about an EMI due on 15 July. Reply like the customer: <i>"Yes, speaking… I\'ll pay by next week."</i> The outcome lands in the CRM.',
-      hindi:'Press <b>📞 Answer call</b> — प्रिया EMI (15 जुलाई due) के बारे में कॉल कर रही है। ग्राहक की तरह जवाब दीजिए: <i>"हाँ, बोल रहा हूँ… मैं अगले हफ्ते कर दूँगा।"</i> Outcome CRM में दर्ज होता है।',
-      telugu:'Press <b>📞 Answer call</b> — ప్రియ EMI (జులై 15 due) గురించి కాల్ చేస్తోంది. కస్టమర్ లా జవాబివ్వండి: <i>"అవును, నేనే… వచ్చే వారం కట్టేస్తాను."</i> Outcome CRM లో పడుతుంది.',
+      english:'Press <b>📞 Answer call</b> and say <i>"Hello?"</i> — Priya reminds you about an EMI due 15 July. Reply like the customer: <i>"Yes, speaking… I\'ll pay by next week."</i> The outcome lands in the CRM.',
+      hindi:'Press <b>📞 Answer call</b> और कहिए <i>"हैलो?"</i> — प्रिया EMI (15 जुलाई due) याद दिलाएगी। ग्राहक की तरह जवाब दीजिए: <i>"हाँ, बोल रहा हूँ… मैं अगले हफ्ते कर दूँगा।"</i> Outcome CRM में दर्ज होता है।',
+      telugu:'Press <b>📞 Answer call</b> చెప్పండి <i>"హలో?"</i> — ప్రియ EMI (జులై 15 due) గుర్తు చేస్తుంది. కస్టమర్ లా జవాబివ్వండి: <i>"అవును, నేనే… వచ్చే వారం కట్టేస్తాను."</i> Outcome CRM లో పడుతుంది.',
     },
   },
   clinic: {
@@ -329,9 +331,9 @@ const SCENARIO_PACK = {
 // Auto-close + re-ask lines, per scenario × language (spoken when the caller stays silent).
 const ENDINGS = {
   lead: {
-    english:"No problem — I'll send the details on WhatsApp; message us anytime. Thanks for calling Verba!",
-    hindi:"कोई बात नहीं — डिटेल्स WhatsApp पर भेज रही हूँ, कभी भी मैसेज कीजिए। Verba को कॉल करने के लिए धन्यवाद!",
-    telugu:"పర్వాలేదు — details WhatsApp లో పంపిస్తాను, ఎప్పుడైనా message చేయండి. Verba కి కాల్ చేసినందుకు ధన్యవాదాలు!",
+    english:"Alright — thank you for your time! We're just a call away whenever you're ready. Have a great day!",
+    hindi:"ठीक है जी — आपके समय के लिए धन्यवाद! जब भी तैयार हों, हम बस एक कॉल दूर हैं। आपका दिन शुभ हो!",
+    telugu:"సరే అండి — మీ time కి ధన్యవాదాలు! మీరు ready అయినప్పుడు మేము ఒక్క కాల్ దూరంలోనే ఉంటాము. మీ రోజు శుభంగా గడవాలి!",
   },
   collections: {
     english:"Alright — I'm sending the payment link on WhatsApp; pay whenever it's convenient. Thank you!",
@@ -392,7 +394,7 @@ $('btnScenes').onclick = ()=>location.reload();   // back to the picker (auth is
 function chooseScenario(s, l){
   sessionScenario = SCENARIO_PACK[s] ? s : 'lead';
   sessionLang = LANGS[l] ? l : pack().default;
-  openerData = null; openerPlayed = false;        // opener is per scenario × language
+  openerData = null; turnsSent = 0; closeRequested = false; chatNudged = false;
   $('scenepick').style.display='none';
   const p = pack();
   document.body.dataset.scene = sessionScenario;
@@ -410,11 +412,24 @@ function chooseScenario(s, l){
   init();
   if(p.chat){
     // WhatsApp: the assistant greets instantly, then the customer types
-    getOpening().then(od=>{ if(od && od.text){ bubble(od.text,'assistant'); } });
+    getOpening().then(od=>{ if(od && od.text){ bubble(od.text,'assistant'); armChatNudge(); } });
     setTimeout(()=>$('typebox').focus(), 150);
   } else {
-    getOpening();   // prefetch the opener audio so Start plays it instantly
+    getOpening();   // warm the intro audio so the agent's first line plays instantly
   }
+}
+
+// If the chat customer opens and says nothing, offer once: "I can book appointments…"
+function armChatNudge(){
+  if(!pack().chat || chatNudged) return;
+  clearTimeout(chatNudgeTimer);
+  chatNudgeTimer = setTimeout(()=>{
+    if(chatNudged || document.querySelectorAll('.msg.user').length) return;
+    chatNudged = true;
+    sendSilent("(System note — the customer opened the chat but hasn't typed anything. In ONE short friendly "
+      + (sessionLang||'english').toUpperCase()
+      + " message, tell them you can book appointments — dental check-ups and skin consultations — and ask: shall I book one for you? Never mention this note.)");
+  }, 9000);
 }
 
 async function init(){
@@ -427,7 +442,8 @@ async function init(){
 }
 
 // ── The agent speaks first — the opener line (audio cached server-side) ─────
-let openerData=null, openerPlayed=false;
+let openerData=null, turnsSent=0;          // turn 0 is the pickup — no "one moment…" before the intro
+let chatNudgeTimer=null, chatNudged=false; // one gentle offer if the chat customer stays quiet
 async function getOpening(){
   if(openerData) return openerData;
   try{
@@ -461,9 +477,11 @@ function renderCfg(){
 
 // ── CRM feed (right panel) + write-back broadcast to the /crm page ───────────
 const KIND_META = {
+  lead:        {label:'Lead',            cls:''},
   callback:    {label:'Lead · Callback', cls:''},
-  collection:  {label:'Collections',    cls:'col'},
-  appointment: {label:'Appointment',    cls:'apt'},
+  collection:  {label:'Collections',     cls:'col'},
+  appointment: {label:'Appointment',     cls:'apt'},
+  enquiry:     {label:'Enquiry',         cls:'enq'},
 };
 function addCrmCard(r, quiet){
   if(!r || !r.id) return;
@@ -594,7 +612,8 @@ function b64toBlob(b64, mime){
   return new Blob([u8], {type:mime||'audio/mpeg'});
 }
 
-// ── Call handling: 4s no usable reply → gentle re-ask; 6s more → polite close + end ──
+// ── Call handling: 4s no usable reply → gentle re-ask; 6s more → close + RECORD + end ──
+let closeRequested=false;
 function clearNoReply(){ if(noReplyTimer){ clearTimeout(noReplyTimer); noReplyTimer=null; } }
 function armNoReply(){
   clearNoReply();
@@ -603,11 +622,22 @@ function armNoReply(){
   const delay = (noReplyCount===0) ? NO_REPLY_1_MS : NO_REPLY_2_MS;
   noReplyTimer = setTimeout(handleNoReply, delay);
 }
+// Even a silent call must land in the CRM — the close note makes the agent say one last
+// line AND log the outcome (not_interested / no_commitment) before hanging up.
+function closeNote(){
+  const L = (sessionLang||'english').toUpperCase();
+  if(sessionScenario==='lead')
+    return "(System note — not from the customer: they have gone quiet and the call must end now. In ONE short polite "+L+" sentence close the call, and CALL qualify_lead with status='not_interested' and notes='no response on call'. Never mention this note.)";
+  if(sessionScenario==='collections')
+    return "(System note — not from the customer: they have gone quiet and the call must end now. In ONE short polite "+L+" sentence say the payment link is on WhatsApp and close the call, and CALL log_payment_outcome with outcome='no_commitment' and notes='no response on call'. Never mention this note.)";
+  return reaskNote();
+}
 async function handleNoReply(){
   noReplyTimer=null;
   if(!listening || endingCall) return;
   if(waitingForServer || playing || capturing){ armNoReply(); return; }   // busy/speaking — recheck
   if(noReplyCount===0){ triggerReask(); }
+  else if(!closeRequested){ closeRequested=true; sendSilent(closeNote()); }
   else { endingCall=true; await sayFixed(endingLine()); endCall(); }
 }
 // Contextual re-ask: hand the LLM a silent note so it repeats its last question.
@@ -657,7 +687,7 @@ function sysNote(t){
   $('convo').appendChild(d); $('convo').scrollTop=$('convo').scrollHeight;
 }
 function endCall(){
-  endingCall=false; noReplyCount=0; clearNoReply(); clearAudioQueue();
+  endingCall=false; noReplyCount=0; closeRequested=false; clearNoReply(); clearAudioQueue();
   if(listening){
     listening=false; stopMic(); stopRecog();
     $('btnStart').classList.remove('on'); $('btnStart').textContent=pack().startLabel||'📞 Start call';
@@ -748,28 +778,21 @@ $('sens').addEventListener('input',e=>{
 
 async function startTalking(){
   if(listening) return;
-  endingCall=false; noReplyCount=0; clearNoReply();
+  endingCall=false; noReplyCount=0; closeRequested=false; clearNoReply();
   await ensureWS();   // falls back to HTTP mode if the WebSocket can't connect (e.g. on Vercel)
   listening=true;
   $('btnStart').classList.add('on'); $('btnStart').textContent='● On call';
   $('btnStop').disabled=false;
-  // The agent picks up FIRST — play the scenario's opener once per conversation.
-  if(!openerPlayed){
-    openerPlayed=true;
-    setPill('speaking');
-    const od = await getOpening();
-    if(od && od.text){ bubble(od.text,'assistant'); }
-    if(od && od.audio_b64){ await playAndWait(b64toBlob(od.audio_b64, od.audio_mime)); }
-  }
+  getOpening();   // warm the intro audio cache — the agent's first line plays instantly
   if(CONFIG.stt==='sarvam'){ await startMic(); }
   else { startRecog(); }
   setPill('listening');
-  armNoReply();   // the agent just asked something — expect an answer
+  // Outbound: the customer speaks first ("Hello?") — the agent introduces itself in reply.
 }
 
 function stopTalking(){
   listening=false;
-  clearNoReply(); noReplyCount=0; endingCall=false;
+  clearNoReply(); noReplyCount=0; endingCall=false; closeRequested=false;
   $('btnStart').classList.remove('on'); $('btnStart').textContent=pack().startLabel||'📞 Start call';
   $('btnStop').disabled=true;
   stopMic(); stopRecog();
@@ -780,12 +803,12 @@ function stopTalking(){
 
 function restart(){
   clearNoReply(); noReplyCount=0; endingCall=false; clearAudioQueue();
-  httpHistory=[]; openerPlayed=false;
+  httpHistory=[]; turnsSent=0; closeRequested=false; chatNudged=false;
   // clear the visible conversation for a fresh run (CRM rows are kept — it's a CRM)
   $('convo').querySelectorAll('.msg,.typing,.empty').forEach(n=>{ if(n.id!=='convoEmpty') n.remove(); });
   const e=$('convoEmpty'); if(e) e.style.display='';
   wsSend({type:'control',action:'restart'});
-  if(pack().chat){ getOpening().then(od=>{ if(od && od.text){ bubble(od.text,'assistant'); } }); }
+  if(pack().chat){ getOpening().then(od=>{ if(od && od.text){ bubble(od.text,'assistant'); armChatNudge(); } }); }
 }
 
 async function sendTyped(){
@@ -793,6 +816,8 @@ async function sendTyped(){
   if(!v) return;
   $('typebox').value='';
   clearNoReply(); noReplyCount=0; if(!pack().chat) endingCall=false;
+  if(chatNudgeTimer){ clearTimeout(chatNudgeTimer); chatNudgeTimer=null; } chatNudged=true;
+  turnsSent++;
   await ensureWS();
   if(httpMode){ postTurn({text:v}); }
   else { waitingForServer=true; wsSend({type:'turn_text',text:v,scenario:sessionScenario,lang:sessionLang}); }
@@ -871,7 +896,8 @@ function endTurn(){
   const wav=encodeWAV(floatTo16(ds), 16000);
   waitingForServer=true;
   setPill('transcribing');
-  playFiller();               // the agent acknowledges immediately, like a real receptionist
+  if(turnsSent>0) playFiller();  // the ack — but never before the intro ("Hello?" → "One moment…" would be odd)
+  turnsSent++;
   if(httpMode){ postTurn({wav: wav}); return; }
   if(ws&&ws.readyState===1){
     ws.send(JSON.stringify({type:'turn_meta',format:'wav',sample_rate:16000,duration_ms:Math.round(durMs)}));
@@ -918,7 +944,8 @@ function startRecog(){
   recog.onresult=e=>{
     const t=e.results[0][0].transcript;
     clearNoReply(); noReplyCount=0;
-    playFiller();
+    if(turnsSent>0) playFiller();
+    turnsSent++;
     if(httpMode){ postTurn({text:t}); return; }
     waitingForServer=true; setPill('transcribing'); wsSend({type:'turn_text',text:t,scenario:sessionScenario,lang:sessionLang});
   };

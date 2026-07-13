@@ -39,6 +39,8 @@
   @keyframes flash{0%{background:#FFF7E0}100%{background:var(--card)}}
   .rec.col{border-left-color:var(--amber)}
   .rec.apt{border-left-color:var(--ok)}
+  .rec.enq{border-left-color:#8A8FF0}
+  .rec.enq .badge{background:#8A8FF0}
   .rec .top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
   .rec .nm{font-family:'Fraunces',serif;font-weight:600;font-size:17px;color:var(--deep)}
   .rec .ph{font-size:13px;color:var(--muted)}
@@ -100,9 +102,10 @@
 
   <div class="filters">
     <button class="fchip on" data-k="all">All</button>
-    <button class="fchip" data-k="callback">Lead callbacks</button>
+    <button class="fchip" data-k="lead">Leads</button>
     <button class="fchip" data-k="collection">Collections</button>
     <button class="fchip" data-k="appointment">Appointments</button>
+    <button class="fchip" data-k="enquiry">Enquiries</button>
   </div>
 
   <div class="list" id="list">
@@ -117,9 +120,11 @@
 <script>
 const $ = id => document.getElementById(id);
 const KIND = {
+  lead:        {label:'Lead',            cls:''},
   callback:    {label:'Lead · Callback', cls:''},
-  collection:  {label:'Collections',    cls:'col'},
-  appointment: {label:'Appointment',    cls:'apt'},
+  collection:  {label:'Collections',     cls:'col'},
+  appointment: {label:'Appointment',     cls:'apt'},
+  enquiry:     {label:'Enquiry',         cls:'enq'},
 };
 let adminPw='', records={}, filter='all';   // records keyed by kind-id
 

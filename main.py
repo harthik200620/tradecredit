@@ -150,11 +150,32 @@ async def api_fillers(password: str = Form(default=""), scenario: str = Form(def
 _opening_cache: dict[str, dict] = {}
 
 
+async def _opening_audio(scenario: str, lng: str) -> tuple[str | None, str | None]:
+    """Synthesized audio of the scenario's first line, cached per (provider, voice, scenario,
+    lang) — the outbound intro plays instantly, no per-call TTS wait."""
+    if tts._eleven_ok is None:
+        await tts.probe_elevenlabs()
+    key = f"{tts.active_provider()}::{tts._voice_for(lng)}::{scenario}::{lng}"
+    if key not in _opening_cache:
+        audio_b64, mime = None, None
+        try:
+            a, m = await tts.synthesize(opener_for(scenario, lng), lng)
+            if a:
+                audio_b64, mime = base64.b64encode(a).decode("ascii"), m
+        except Exception:
+            pass
+        _opening_cache[key] = {"audio_b64": audio_b64, "audio_mime": mime}
+    cached = _opening_cache[key]
+    return cached["audio_b64"], cached["audio_mime"]
+
+
 @app.post("/api/opening")
 async def api_opening(password: str = Form(default=""), scenario: str = Form(default="lead"),
                       lang: str = Form(default="")):
-    """The agent speaks FIRST. Returns the scenario's opening line in the chosen language —
-    with audio for the voice scenarios (synthesized once and cached), text-only for chat."""
+    """The scenario's first line in the chosen language. For the chat scenario it's the
+    greeting shown before the customer types (text-only); for the outbound voice scenarios
+    the page calls this just to WARM the audio cache — the line itself is delivered as the
+    canned reply to the customer's pickup."""
     if password != ADMIN_PASSWORD:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     sc = scenario_of(scenario)
@@ -162,20 +183,8 @@ async def api_opening(password: str = Form(default=""), scenario: str = Form(def
     text = opener_for(scenario, lng)
     if sc["chat"]:
         return {"text": text, "audio_b64": None, "audio_mime": None}
-    if tts._eleven_ok is None:
-        await tts.probe_elevenlabs()
-    key = f"{tts.active_provider()}::{tts._voice_for(lng)}::{scenario}::{lng}"
-    if key not in _opening_cache:
-        audio_b64, mime = None, None
-        try:
-            a, m = await tts.synthesize(text, lng)
-            if a:
-                audio_b64, mime = base64.b64encode(a).decode("ascii"), m
-        except Exception:
-            pass
-        _opening_cache[key] = {"audio_b64": audio_b64, "audio_mime": mime}
-    cached = _opening_cache[key]
-    return {"text": text, "audio_b64": cached["audio_b64"], "audio_mime": cached["audio_mime"]}
+    audio_b64, mime = await _opening_audio(scenario, lng)
+    return {"text": text, "audio_b64": audio_b64, "audio_mime": mime}
 
 
 @app.post("/api/say")
@@ -207,17 +216,29 @@ _OUTCOME_PRETTY = {
 }
 
 
+_LEAD_STATUS_PRETTY = {
+    "interested": "Interested ✓",
+    "not_interested": "Not interested",
+    "call_later": "Call later",
+}
+
+
 def _crm_row(scenario: str, tool: str, args: dict) -> dict:
     a = {k: str(v).strip() for k, v in (args or {}).items() if v is not None}
     details = json.dumps(args or {}, ensure_ascii=False)
-    if tool == "book_callback":
-        bits = [a.get("requirement"), a.get("business"),
-                ("callback " + a["callback_time"]) if a.get("callback_time") else None,
+    if tool == "qualify_lead":
+        status = _LEAD_STATUS_PRETTY.get(a.get("status", ""), a.get("status", "logged"))
+        bits = [a.get("property_type"), a.get("area"),
                 ("budget " + a["budget"]) if a.get("budget") else None,
-                a.get("timeline"), a.get("notes")]
-        return {"scenario": scenario, "kind": "callback", "name": a.get("name", ""),
+                a.get("notes")]
+        return {"scenario": scenario, "kind": "lead", "name": a.get("name", ""),
                 "phone": a.get("phone", ""), "summary": " · ".join(b for b in bits if b),
-                "details": details, "status": "callback booked"}
+                "details": details, "status": status}
+    if tool == "log_enquiry":
+        bits = [a.get("topic"), a.get("notes")]
+        return {"scenario": scenario, "kind": "enquiry", "name": a.get("name", ""),
+                "phone": a.get("phone", ""), "summary": " · ".join(b for b in bits if b),
+                "details": details, "status": "to follow up"}
     if tool == "log_payment_outcome":
         outcome = _OUTCOME_PRETTY.get(a.get("outcome", ""), a.get("outcome", ""))
         bits = [("EMI " + a["amount"]) if a.get("amount") else "EMI",
@@ -248,9 +269,10 @@ def _handlers_for(scenario: str, captured: dict, on_row=None) -> dict:
         return row
 
     return {
-        "book_callback": lambda args: _save("book_callback", args),
+        "qualify_lead": lambda args: _save("qualify_lead", args),
         "log_payment_outcome": lambda args: _save("log_payment_outcome", args),
         "book_appointment": lambda args: _save("book_appointment", args),
+        "log_enquiry": lambda args: _save("log_enquiry", args),
     }
 
 
@@ -285,6 +307,17 @@ async def api_turn(
         user_text = transcript
     if not user_text:
         return {"error": "no input", "history": contents}
+
+    # Outbound calls: the customer just picked up ("Hello?"). The agent's intro is a fixed,
+    # pre-synthesized line — delivered instantly, no LLM round-trip. The prompt tells the
+    # model this line was already spoken, so the conversation continues seamlessly.
+    if sc.get("outbound") and not contents:
+        intro = opener_for(scenario, lng)
+        contents.append({"role": "user", "parts": [{"text": user_text}]})
+        contents.append({"role": "model", "parts": [{"text": intro}]})
+        audio_b64, mime = await _opening_audio(scenario, lng)
+        return {"transcript": transcript, "reply": intro, "crm": None, "history": contents,
+                "audio_b64": audio_b64, "audio_mime": mime, "rest_text": None}
 
     captured = {"crm": None}
     try:
@@ -358,6 +391,21 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
     if not silent:
         await _send(ws, {"type": "transcript", "role": "user", "text": text})
     db.log_turn(sid, "user", text)
+
+    # Outbound pickup: the first customer utterance gets the fixed intro line instantly.
+    if sc.get("outbound") and not state["contents"] and not silent:
+        intro = opener_for(scenario, lng)
+        state["contents"].append({"role": "user", "parts": [{"text": text}]})
+        state["contents"].append({"role": "model", "parts": [{"text": intro}]})
+        await _send(ws, {"type": "assistant_text", "role": "assistant", "text": intro})
+        db.log_turn(sid, "assistant", intro)
+        audio_b64, mime = await _opening_audio(scenario, lng)
+        if audio_b64:
+            audio = base64.b64decode(audio_b64)
+            await _send(ws, {"type": "tts_audio_meta", "mime": mime, "bytes": len(audio)})
+            await ws.send_bytes(audio)
+        await _send(ws, {"type": "status", "state": "idle"})
+        return
 
     await _send(ws, {"type": "status", "state": "thinking"})
 
