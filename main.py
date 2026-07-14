@@ -104,8 +104,8 @@ async def api_crm(password: str = Form(default="")):
 # the ~4-5s eleven_v3 synthesis of the real reply. Synthesized once per (provider, voice, lang)
 # and cached. One consistent line per language — no cycling through phrases.
 _FILLER_TEXTS = {
-    "english": ["One moment…"],
-    "hindi": ["एक मिनट…"],
+    "english": ["Please give me a moment while I fetch the details…"],
+    "hindi": ["कृपया एक क्षण दीजिए, मैं details देख रही हूँ…"],
     "telugu": ["ఒక్క నిమిషం అండి…"],
 }
 _filler_cache: dict[str, list] = {}

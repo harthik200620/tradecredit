@@ -459,6 +459,12 @@ function playFiller(){
     playAudio(fillerBlobs[Math.floor(Math.random()*fillerBlobs.length)]);
   }
 }
+// Speak the filler ONLY if the reply is actually delayed — a fast answer plays straight away.
+let fillerTimer=null;
+function scheduleFiller(){
+  clearTimeout(fillerTimer);
+  fillerTimer = setTimeout(()=>{ if(listening && waitingForServer && !playing) playFiller(); }, 1200);
+}
 
 function renderCfg(){
   const c = CONFIG;
@@ -914,7 +920,7 @@ function endTurn(){
   const wav=encodeWAV(floatTo16(ds), 16000);
   waitingForServer=true;
   setPill('transcribing');
-  if(turnsSent>0) playFiller();  // the ack — but never before the intro ("Hello?" → "One moment…" would be odd)
+  if(turnsSent>0) scheduleFiller();  // only if the reply is slow — and never before the intro
   turnsSent++;
   if(httpMode){ postTurn({wav: wav}); return; }
   if(ws&&ws.readyState===1){
@@ -962,7 +968,7 @@ function startRecog(){
   recog.onresult=e=>{
     const t=e.results[0][0].transcript;
     clearNoReply(); noReplyCount=0;
-    if(turnsSent>0) playFiller();
+    if(turnsSent>0) scheduleFiller();
     turnsSent++;
     if(httpMode){ postTurn({text:t}); return; }
     waitingForServer=true; setPill('transcribing'); wsSend({type:'turn_text',text:t,scenario:sessionScenario,lang:sessionLang});
