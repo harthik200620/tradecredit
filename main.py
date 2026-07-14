@@ -86,16 +86,6 @@ async def api_crm(password: str = Form(default="")):
     return {"records": db.recent_crm()}
 
 
-# One spoken acknowledgment per language, played the INSTANT the caller stops talking, masking
-# the ~4-5s eleven_v3 synthesis of the real reply. Synthesized once per (provider, voice, lang)
-# and cached. One consistent line per language — no cycling through phrases.
-_FILLER_TEXTS = {
-    "english": ["Please give me a moment while I fetch the details…"],
-    "hindi": ["कृपया एक क्षण दीजिए, मैं details देख रही हूँ…"],
-    "telugu": ["ఒక్క నిమిషం అండి…"],
-}
-_filler_cache: dict[str, list] = {}
-
 # Chosen language → Sarvam STT language_code.
 _LANG_CODE = {"english": "en-IN", "hindi": "hi-IN", "telugu": "te-IN"}
 
@@ -103,26 +93,9 @@ _LANG_CODE = {"english": "en-IN", "hindi": "hi-IN", "telugu": "te-IN"}
 @app.post("/api/fillers")
 async def api_fillers(password: str = Form(default=""), scenario: str = Form(default=""),
                       lang: str = Form(default="")):
-    if tts._eleven_ok is None:          # settle the provider BEFORE keying the cache
-        await tts.probe_elevenlabs()
-    lng = norm_lang(lang, scenario)
-    texts = _FILLER_TEXTS.get(lng, _FILLER_TEXTS["english"])
-    key = f"{tts.active_provider()}::{tts._voice_for(lng)}::{lng}"
-    if key not in _filler_cache:
-        # SEQUENTIAL on purpose: the ElevenLabs free tier allows only 2 concurrent requests,
-        # and a parallel warm-up 429s. One-time cost at page load, so latency doesn't matter.
-        out = []
-        for t in texts:
-            try:
-                a, m = await tts.synthesize(t, lng)
-                if a:
-                    out.append({"b64": base64.b64encode(a).decode("ascii"), "mime": m})
-            except Exception:
-                pass
-        if out:  # keep one consistent voice — drop clips that fell back to another provider
-            out = [o for o in out if o["mime"] == out[0]["mime"]]
-        _filler_cache[key] = out
-    return {"fillers": _filler_cache[key]}
+    """The 'one moment…' filler lines were removed at the user's request — the agent thinks
+    silently. Endpoint kept (empty) so older cached pages don't error."""
+    return {"fillers": []}
 
 
 _opening_cache: dict[str, dict] = {}
