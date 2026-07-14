@@ -339,10 +339,12 @@ _SENT_END = re.compile(r"[.!?…।]\s")
 
 
 def _split_for_tts(text: str) -> list[str]:
-    """[first sentence, remainder] so the first sentence can start playing while the rest
-    synthesizes. Short replies stay a single chunk (no extra TTS round-trip)."""
+    """One continuous utterance for anything reply-sized — splitting sounds BROKEN on
+    eleven_v3 (each chunk gets fresh prosody + dead air while chunk 2 renders, and v3
+    pronounces short fragments worse). Replies are one sentence now, so only something
+    unusually long (>160 chars) still gets the play-while-rendering split."""
     t = (text or "").strip()
-    if len(t) < 55:
+    if len(t) < 160:
         return [t] if t else []
     m = _SENT_END.search(t)
     if not m:
