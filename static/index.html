@@ -818,7 +818,6 @@ async function sendTyped(){
 
 // ── Mic capture (Sarvam path): AudioWorklet + energy VAD + WAV encode ─────────
 let capturing=false, speechFrames=[], preRoll=[], silentSamples=0, speechSamples=0, voicedSamples=0, srate=48000;
-let bargeVoiced=0;   // sustained-voice counter for interrupting the agent mid-sentence
 const PREROLL_MS=300, SILENCE_END_MS=550, MIN_SPEECH_MS=300, MAX_TURN_MS=15000;
 // A full phrase (>= MIN_COMPLETE_MS of actual voice) ends on a normal pause; a short fragment
 // is given a bit longer to continue before we finalize it. Tuned FAST — the agent replies
@@ -846,12 +845,14 @@ function stopMic(){
   try{ if(audioCtx) audioCtx.close(); }catch(e){}
   workletNode=sourceNode=micStream=audioCtx=null; capturing=false; speechFrames=[];
 }
-// Capture stays armed while the agent SPEAKS (echo-cancelled mic) so the caller can talk
-// over her — but never while a turn is still in flight on the server.
-function armed(){ return listening && !waitingForServer; }
+// The mic is CLOSED while the agent speaks and while a turn is in flight — on phone
+// speakers the agent otherwise hears herself and answers her own words in a loop.
+// After her audio ends it stays closed a further 350ms so the speaker tail can't leak in.
+let muteUntil=0;
+function armed(){ return listening && !waitingForServer && !playing && performance.now() > muteUntil; }
 
 function onPcm(chunk){
-  if(!armed()){ bargeVoiced=0; return; }
+  if(!armed()){ return; }
   const n=chunk.length;
   let sum=0; for(let i=0;i<n;i++){ const s=chunk[i]; sum+=s*s; }
   const rms=Math.sqrt(sum/n);
@@ -864,19 +865,9 @@ function onPcm(chunk){
     let total=preRoll.reduce((a,c)=>a+c.length,0);
     while(total>preMax && preRoll.length>1){ total-=preRoll.shift().length; }
     if(rms>startT){
-      if(playing){
-        // Barge-in: only on ~350ms of SUSTAINED voice (so stray echo can't cut her off),
-        // then stop the agent and listen — the pre-roll keeps the words already spoken.
-        bargeVoiced+=n;
-        if(bargeVoiced < srate*0.35) return;
-        clearAudioQueue(); setPill('listening');
-      }
-      bargeVoiced=0;
       capturing=true; speechFrames=preRoll.slice(); preRoll=[];
       speechSamples=speechFrames.reduce((a,c)=>a+c.length,0); silentSamples=0; voicedSamples=0;
       clearNoReply();                       // caller is speaking — pause the no-reply countdown
-    } else {
-      bargeVoiced = Math.max(0, bargeVoiced - n);
     }
   }else{
     speechFrames.push(chunk); speechSamples+=n;
@@ -990,6 +981,7 @@ function endOfStream(){     // server signalled the turn is finished (status idl
   if(!qActive && audioQ.length===0){ playing=false; afterPlay(); }
 }
 function afterPlay(){
+  muteUntil = performance.now() + 350;   // let the speaker tail fade before the mic reopens
   if(endingCall){ endCall(); return; }
   if(listening){ setPill('listening'); rearm(); armNoReply(); }
   else { setPill('idle'); if(pack().chat) armNoReply(); }   // chat ladder re-arms after each reply
