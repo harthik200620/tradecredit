@@ -70,21 +70,6 @@
 </style>
 </head>
 <body>
-<div id="lock" class="lock">
-  <div class="lockcard">
-    <svg width="54" height="54" viewBox="0 0 58 58" aria-hidden="true">
-      <circle cx="29" cy="29" r="27" fill="#23265F"/>
-      <circle cx="29" cy="29" r="27" fill="none" stroke="#5A5FE0" stroke-width="2"/>
-      <text x="29" y="38" text-anchor="middle" font-family="Fraunces,serif" font-weight="700" font-size="26" fill="#E8B44C">V</text>
-    </svg>
-    <div class="tag">Verba</div>
-    <h2>Verba CRM</h2>
-    <p>Enter the access password to continue.</p>
-    <input id="lockpw" type="password" placeholder="Password" autocomplete="off" />
-    <button id="lockbtn">Unlock</button>
-    <div id="lockerr" class="lockerr"></div>
-  </div>
-</div>
 <div class="wrap">
   <header>
     <svg width="46" height="46" viewBox="0 0 58 58" aria-hidden="true">
@@ -183,33 +168,9 @@ async function poll(){
   }catch(e){}
 }
 
-// access gate (same saved password as the agent page)
-async function verifyPw(pw){
-  try{
-    const fd=new FormData(); fd.append('password', pw);
-    const j=await (await fetch('/api/login',{method:'POST',body:fd})).json();
-    return !!j.ok;
-  }catch(e){ return false; }
-}
-async function boot(){
-  const saved=localStorage.getItem('kpw')||'';
-  if(saved && await verifyPw(saved)){ start(saved); return; }
-  $('lock').style.display='flex'; setTimeout(()=>$('lockpw').focus(),60);
-}
-async function unlock(){
-  const pw=$('lockpw').value.trim(); if(!pw) return;
-  $('lockerr').textContent='Checking…';
-  if(await verifyPw(pw)){ localStorage.setItem('kpw',pw); $('lock').style.display='none'; start(pw); }
-  else { $('lockerr').textContent='Wrong password. Try again.'; $('lockpw').select(); }
-}
-$('lockbtn').onclick=unlock;
-$('lockpw').addEventListener('keydown',e=>{ if(e.key==='Enter') unlock(); });
-function start(pw){
-  adminPw=pw;
-  loadCache(); render();
-  poll(); setInterval(poll, 4000);
-}
-boot();
+// no access gate — open the CRM straight away
+loadCache(); render();
+poll(); setInterval(poll, 4000);
 </script>
 </body>
 </html>

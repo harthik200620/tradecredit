@@ -152,21 +152,6 @@
 </style>
 </head>
 <body>
-<div id="lock" class="lock">
-  <div class="lockcard">
-    <svg width="54" height="54" viewBox="0 0 58 58" aria-hidden="true">
-      <circle cx="29" cy="29" r="27" fill="#23265F"/>
-      <circle cx="29" cy="29" r="27" fill="none" stroke="#5A5FE0" stroke-width="2"/>
-      <text x="29" y="38" text-anchor="middle" font-family="Fraunces,serif" font-weight="700" font-size="26" fill="#E8B44C">V</text>
-    </svg>
-    <div class="tag">Verba</div>
-    <h2>AI Voice &amp; Chat Agents</h2>
-    <p>Enter the access password to continue.</p>
-    <input id="lockpw" type="password" placeholder="Password" autocomplete="off" />
-    <button id="lockbtn">Unlock</button>
-    <div id="lockerr" class="lockerr"></div>
-  </div>
-</div>
 <div id="scenepick" class="lock" style="display:none">
   <div class="lockcard scenecard">
     <svg width="54" height="54" viewBox="0 0 58 58" aria-hidden="true">
@@ -359,31 +344,9 @@ function endingLine(){ return (ENDINGS[sessionScenario] || ENDINGS.lead)[session
 function reaskNote(){ return REASKS[sessionLang] || REASKS.english; }
 function hintNow(){ return pack().hints[sessionLang] || pack().hints[pack().default]; }
 
-// ── boot / access gate ───────────────────────────────────────────────────────
-let adminPw = '';
-$('lockbtn').onclick = unlock;
-$('lockpw').addEventListener('keydown', e=>{ if(e.key==='Enter') unlock(); });
-bootAuth();
-
-async function verifyPw(pw){
-  try{
-    const fd=new FormData(); fd.append('password', pw);
-    const j=await (await fetch('/api/login',{method:'POST',body:fd})).json();
-    return !!j.ok;
-  }catch(e){ return false; }
-}
-async function bootAuth(){
-  const saved = localStorage.getItem('kpw') || '';
-  if(saved && await verifyPw(saved)){ adminPw=saved; openApp(); }
-  else { $('lock').style.display='flex'; setTimeout(()=>$('lockpw').focus(), 60); }
-}
-async function unlock(){
-  const pw=$('lockpw').value.trim(); if(!pw) return;
-  $('lockerr').textContent='Checking…';
-  if(await verifyPw(pw)){ adminPw=pw; localStorage.setItem('kpw', pw); openApp(); }
-  else { $('lockerr').textContent='Wrong password. Try again.'; $('lockpw').select(); }
-}
-function openApp(){ $('lock').style.display='none'; $('scenepick').style.display='flex'; }
+// ── boot — no access gate; go straight to the scenario picker ─────────────────
+const adminPw = '';                       // gate removed; kept as a harmless empty field
+$('scenepick').style.display='flex';
 document.querySelectorAll('.scn').forEach(b=>{
   b.onclick = (e)=>{
     const chip = e.target.closest('.chip');

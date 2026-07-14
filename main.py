@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Form, File, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import db
@@ -34,18 +34,6 @@ from services import stt, tts, llm
 from services.prompts import scenario_of, norm_lang, opener_for
 
 STATIC_DIR = Path(__file__).parent / "static"
-
-
-def _clean_env(v: str) -> str:
-    """Strip BOM / zero-width chars (CLI pipes and dashboard pastes inject these) plus quotes
-    and surrounding whitespace — the same hygiene the service modules apply to their keys. Without
-    it, a stray invisible char in ADMIN_PASSWORD makes EVERY password compare as 'wrong'."""
-    for ch in (chr(0xFEFF), chr(0x200B), chr(0x200C), chr(0x200D)):
-        v = (v or "").replace(ch, "")
-    return v.strip().strip('"').strip("'").strip()
-
-
-ADMIN_PASSWORD = _clean_env(os.getenv("ADMIN_PASSWORD", "sahayak@ai"))
 
 
 @asynccontextmanager
@@ -89,14 +77,12 @@ async def config():
 
 @app.post("/api/login")
 async def api_login(password: str = Form(default="")):
-    """Access gate — validates the password for the page."""
-    return {"ok": password == ADMIN_PASSWORD}
+    """The access gate was removed — always open (kept so older cached pages still unlock)."""
+    return {"ok": True}
 
 
 @app.post("/api/crm")
 async def api_crm(password: str = Form(default="")):
-    if password != ADMIN_PASSWORD:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
     return {"records": db.recent_crm()}
 
 
@@ -117,8 +103,6 @@ _LANG_CODE = {"english": "en-IN", "hindi": "hi-IN", "telugu": "te-IN"}
 @app.post("/api/fillers")
 async def api_fillers(password: str = Form(default=""), scenario: str = Form(default=""),
                       lang: str = Form(default="")):
-    if password != ADMIN_PASSWORD:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
     if tts._eleven_ok is None:          # settle the provider BEFORE keying the cache
         await tts.probe_elevenlabs()
     lng = norm_lang(lang, scenario)
@@ -170,8 +154,6 @@ async def api_opening(password: str = Form(default=""), scenario: str = Form(def
     greeting shown before the customer types (text-only); for the outbound voice scenarios
     the page calls this just to WARM the audio cache — the line itself is delivered as the
     canned reply to the customer's pickup."""
-    if password != ADMIN_PASSWORD:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
     sc = scenario_of(scenario)
     lng = norm_lang(lang, scenario)
     text = opener_for(scenario, lng)
@@ -185,8 +167,6 @@ async def api_opening(password: str = Form(default=""), scenario: str = Form(def
 async def api_say(text: str = Form(default=""), password: str = Form(default=""),
                   scenario: str = Form(default=""), lang: str = Form(default="")):
     """TTS-only — speak a fixed line without invoking the LLM (used for no-reply nudges)."""
-    if password != ADMIN_PASSWORD:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
     lng = norm_lang(lang, scenario)
     audio_b64, mime = None, None
     try:
@@ -281,8 +261,6 @@ async def api_turn(
 ):
     """Stateless turn for HTTP/serverless clients (Vercel has no WebSocket).
     The client carries the conversation history."""
-    if password != ADMIN_PASSWORD:
-        return JSONResponse({"error": "unauthorized"}, status_code=401)
     sc = scenario_of(scenario)
     lng = norm_lang(lang, scenario)
     try:
@@ -480,11 +458,6 @@ async def ws_endpoint(ws: WebSocket):
             mtype = data.get("type")
 
             if mtype == "hello":
-                if data.get("password") != ADMIN_PASSWORD:
-                    await _send(ws, {"type": "error", "where": "auth",
-                                     "message": "unauthorized", "recoverable": False})
-                    await ws.close()
-                    return
                 if data.get("scenario"):
                     state["scenario"] = data["scenario"]
                 if data.get("lang"):
