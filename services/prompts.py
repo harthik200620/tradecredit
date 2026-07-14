@@ -125,13 +125,17 @@ _NUM_GUIDE = {
         "Reply in natural spoken Hindi (Devanagari script), everyday style — common English "
         "words like 'payment', 'link', 'WhatsApp', 'EMI', 'number' are fine, but the sentence "
         "stays Hindi. Amounts in Hindi words + 'रुपये' (₹8,450 → 'आठ हज़ार चार सौ पचास रुपये'). "
-        "Dates like 'पंद्रह जुलाई'. Phone numbers digit by digit. Always respectful ('जी', 'आप')."
+        "Dates like 'पंद्रह जुलाई'. Phone numbers digit by digit. Always respectful ('जी', 'आप'). "
+        "Write PLACE NAMES and Indian proper nouns in Devanagari (हैदराबाद, कोंडापुर, कूकटपल्ली) — "
+        "never Latin script, so they are pronounced natively."
     ),
     "telugu": (
         "Reply in natural Telugu (Telugu script), Hyderabad style — common English words "
         "(appointment, slot, payment, WhatsApp, number) are fine, but the sentence stays "
         "Telugu. Amounts in Telugu words + 'రూపాయలు' (₹8,450 → 'ఎనిమిది వేల నాలుగు వందల యాభై "
-        "రూపాయలు'). Use 'అండి / గారు'. Phone numbers digit by digit."
+        "రూపాయలు'). Use 'అండి / గారు'. Phone numbers digit by digit. Write PLACE NAMES and "
+        "Indian proper nouns in Telugu script (హైదరాబాద్, కొండాపూర్, కూకట్‌పల్లి) — never Latin "
+        "script, so they are pronounced natively."
     ),
 }
 

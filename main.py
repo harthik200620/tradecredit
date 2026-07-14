@@ -106,7 +106,7 @@ async def _opening_audio(scenario: str, lng: str) -> tuple[str | None, str | Non
     lang) — the outbound intro plays instantly, no per-call TTS wait."""
     if tts._eleven_ok is None:
         await tts.probe_elevenlabs()
-    key = f"{tts.active_provider()}::{tts._voice_for(lng)}::{scenario}::{lng}"
+    key = f"{tts.active_provider()}::{tts._voice_for(lng)}::{tts._model_for(lng)}::{scenario}::{lng}"
     if key not in _opening_cache:
         audio_b64, mime = None, None
         try:

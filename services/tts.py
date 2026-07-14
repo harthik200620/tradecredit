@@ -57,7 +57,13 @@ ELEVEN_KEY = _ELEVEN_KEYS[0] if _ELEVEN_KEYS else ""
 ELEVEN_VOICE = _clean("ELEVENLABS_VOICE_ID")                        # English (primary)
 ELEVEN_VOICE_HI = _clean("ELEVENLABS_VOICE_ID_HI") or ELEVEN_VOICE  # Hindi — own voice if set
 ELEVEN_VOICE_TE = _clean("ELEVENLABS_VOICE_ID_TE") or ELEVEN_VOICE  # Telugu — own voice if set
-ELEVEN_MODEL = _clean("ELEVENLABS_MODEL_ID", "eleven_v3")
+ELEVEN_MODEL = _clean("ELEVENLABS_MODEL_ID", "eleven_v3")            # Telugu (v3-only language)
+# EN/HI ride multilingual_v2: steadier pronunciation (Indian place names!) and faster than v3.
+ELEVEN_MODEL_ENHI = _clean("ELEVENLABS_MODEL_ID_ENHI", "eleven_multilingual_v2")
+
+
+def _model_for(lang: str) -> str:
+    return ELEVEN_MODEL if (lang or "").lower() == "telugu" else ELEVEN_MODEL_ENHI
 
 
 def _voice_for(lang: str) -> str:
@@ -144,7 +150,7 @@ async def _elevenlabs(text: str, lang: str = "english") -> tuple[bytes | None, s
     params = {"output_format": "mp3_44100_64"}  # 64kbps speech is transparent; halves transfer
     body = {
         "text": text,
-        "model_id": ELEVEN_MODEL,
+        "model_id": _model_for(lang),
         # Calm, steady delivery: higher stability + low style = unhurried and even,
         # never theatrical. (Pace itself comes from the voice design + the "…" pauses.)
         "voice_settings": {
