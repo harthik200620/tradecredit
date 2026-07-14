@@ -426,7 +426,9 @@ function playFiller(){
 let fillerTimer=null;
 function scheduleFiller(){
   clearTimeout(fillerTimer);
-  fillerTimer = setTimeout(()=>{ if(listening && waitingForServer && !playing && !capturing) playFiller(); }, 1200);
+  // Fire the "one moment…" line only when the reply is genuinely slow — on a fast turn the
+  // reply would otherwise QUEUE BEHIND the filler and feel slower, not faster.
+  fillerTimer = setTimeout(()=>{ if(listening && waitingForServer && !playing && !capturing) playFiller(); }, 1600);
 }
 
 function renderCfg(){
@@ -817,12 +819,11 @@ async function sendTyped(){
 // ── Mic capture (Sarvam path): AudioWorklet + energy VAD + WAV encode ─────────
 let capturing=false, speechFrames=[], preRoll=[], silentSamples=0, speechSamples=0, voicedSamples=0, srate=48000;
 let bargeVoiced=0;   // sustained-voice counter for interrupting the agent mid-sentence
-const PREROLL_MS=300, SILENCE_END_MS=850, MIN_SPEECH_MS=300, MAX_TURN_MS=15000;
+const PREROLL_MS=300, SILENCE_END_MS=550, MIN_SPEECH_MS=300, MAX_TURN_MS=15000;
 // A full phrase (>= MIN_COMPLETE_MS of actual voice) ends on a normal pause; a short fragment
-// is given up to FRAGMENT_WAIT_MS to continue before we finalize it — so a thinking gap
-// mid-sentence no longer cuts the caller off mid-thought. The instant-ack filler masks the
-// slightly longer endpointing, so responsiveness still feels immediate.
-const MIN_COMPLETE_MS=1100, FRAGMENT_WAIT_MS=2500;
+// is given a bit longer to continue before we finalize it. Tuned FAST — the agent replies
+// about half a second after you stop talking.
+const MIN_COMPLETE_MS=700, FRAGMENT_WAIT_MS=1500;
 
 async function startMic(){
   try{

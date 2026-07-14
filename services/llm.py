@@ -250,8 +250,9 @@ async def _generate(contents: list, scenario: str = "lead", lang: str = "") -> d
         "contents": contents,
         "tools": [{"functionDeclarations": tools_for(scenario)}],
         "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
-        # Replies are 1-2 sentences; a tight cap + thinking off keeps generation fast.
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 300},
+        # Replies are ONE short sentence; a tight cap + thinking off keeps generation fast.
+        # (220 leaves room for qualify_lead's full JSON args — the largest tool call.)
+        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 220},
     }
     if "2.5" in GEMINI_MODEL or GEMINI_MODEL.endswith("-latest"):
         body["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
