@@ -71,6 +71,57 @@ def _reask(lang: str) -> str:
     }.get(lang, "Sorry, could you say that again?")
 
 
+_MONTHS = {
+    "english": ["January", "February", "March", "April", "May", "June", "July", "August",
+                "September", "October", "November", "December"],
+    "hindi": ["जनवरी", "फ़रवरी", "मार्च", "अप्रैल", "मई", "जून", "जुलाई", "अगस्त", "सितंबर",
+              "अक्टूबर", "नवंबर", "दिसंबर"],
+    "telugu": ["జనవరి", "ఫిబ్రవరి", "మార్చి", "ఏప్రిల్", "మే", "జూన్", "జూలై", "ఆగస్టు",
+               "సెప్టెంబర్", "అక్టోబర్", "నవంబర్", "డిసెంబర్"],
+}
+_DAYPART = {  # index by 0=morning 1=afternoon 2=evening 3=night
+    "hindi": ["सुबह", "दोपहर", "शाम", "रात"],
+    "telugu": ["ఉదయం", "మధ్యాహ్నం", "సాయంత్రం", "రాత్రి"],
+}
+
+
+def _humanize_when(date_iso: str, time_24: str, lang: str) -> str:
+    """Turn a raw ISO date (2026-07-17) + 24h time (11:00) into a natural SPOKEN phrase, so the
+    voice never reads dashes/year/colons. E.g. telugu → '17 జూలై, ఉదయం 11 గంటలకు',
+    hindi → '17 जुलाई, सुबह 11 बजे', english → '17 July at 11 AM'. On a parse failure it
+    returns whatever parsed (or ''), never the raw ISO string."""
+    lang = lang if lang in _MONTHS else "english"
+    out_date = ""
+    try:
+        y, mo, day = date_iso.split("-")
+        mo, day = int(mo), int(day)
+        if 1 <= mo <= 12:
+            out_date = f"{day} {_MONTHS[lang][mo - 1]}"
+    except Exception:
+        out_date = ""
+
+    out_time = ""
+    try:
+        hh, mm = time_24.split(":")[:2]
+        hh, mm = int(hh), int(mm)
+        h12 = hh % 12 or 12
+        if lang == "english":
+            ampm = "AM" if hh < 12 else "PM"
+            out_time = f"{h12}:{mm:02d} {ampm}" if mm else f"{h12} {ampm}"
+        else:
+            part = _DAYPART[lang][0 if hh < 12 else 1 if hh < 16 else 2 if hh < 20 else 3]
+            if lang == "hindi":
+                out_time = f"{part} {h12} बजकर {mm} मिनट" if mm else f"{part} {h12} बजे"
+            else:  # telugu
+                out_time = f"{part} {h12} గంటల {mm} నిమిషాలకు" if mm else f"{part} {h12} గంటలకు"
+    except Exception:
+        out_time = ""
+
+    if out_date and out_time:
+        return f"{out_date} at {out_time}" if lang == "english" else f"{out_date}, {out_time}"
+    return out_date or out_time
+
+
 def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") -> str:
     """Tailored confirmation for a successful tool call, in the CHOSEN language — every tool ×
     every language (also the fallback if a follow-up generation fails AFTER the tool already
@@ -169,14 +220,14 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
     if tool == "book_appointment":
         service = str(a.get("service") or "appointment").strip()
         d, t = str(a.get("date") or "").strip(), str(a.get("time") or "").strip()
-        when = f"{d} {t}".strip()
+        when = _humanize_when(d, t, lang)   # natural spoken date/time, never raw ISO/24h
         if lang == "hindi":
             who = f"{name} जी, " if name else ""
-            dt = f" {when} के लिए" if when else ""
-            return f"{who}आपकी {service} अपॉइंटमेंट{dt} कन्फर्म — जानकारी व्हाट्सऐप पर आएगी। और कुछ मदद करूँ जी?"
+            dt = f" {when}" if when else ""
+            return f"{who}आपकी {service} अपॉइंटमेंट{dt} कन्फर्म हो गई — जानकारी व्हाट्सऐप पर आएगी। और कुछ मदद करूँ जी?"
         if lang == "telugu":
             who = f"{name} గారు, " if name else ""
-            dt = f" {when} కి" if when else ""
+            dt = f" {when}" if when else ""
             return f"{who}మీ {service} అపాయింట్‌మెంట్{dt} కన్ఫర్మ్ అయ్యింది — వివరాలు వాట్సాప్ లో వస్తాయి. ఇంకేమైనా సహాయం కావాలా అండి?"
         who = f"{name}, " if name else ""
         dt = f" for {when}" if when else ""

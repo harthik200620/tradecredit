@@ -119,9 +119,32 @@ _AUDIO_TAG = re.compile(r"\[[^\]\n]{0,30}\]")
 def _strip_audio_tags(text: str) -> str:
     return _AUDIO_TAG.sub("", text).strip()
 
+
+# The English voice mis-reads some names (e.g. "Riya" as "Rye-ya"). Respell them phonetically
+# for the SPOKEN audio ONLY — the on-screen transcript keeps the real spelling. Word-boundary
+# and case-insensitive; native-script replies are untouched (there the names are रिया / రియా).
+# Add more pairs here whenever a word is mispronounced.
+_PRONOUNCE = {
+    "Riya": "Reeya",
+    "Priya": "Preeya",
+}
+_PRONOUNCE_RE = [(re.compile(r"\b" + re.escape(k) + r"\b", re.I), v) for k, v in _PRONOUNCE.items()]
+
+
+def _fix_pronunciation(text: str) -> str:
+    for rx, repl in _PRONOUNCE_RE:
+        text = rx.sub(repl, text)
+    return text
+
 SARVAM_KEY = _clean("SARVAM_API_KEY")
 SARVAM_TTS_MODEL = _clean("SARVAM_TTS_MODEL", "bulbul:v2")
 SARVAM_TTS_SPEAKER = _clean("SARVAM_TTS_SPEAKER", "anushka")
+
+# eleven_v3 is the ONLY ElevenLabs model that speaks Telugu, and it is noticeably SLOW.
+# Sarvam Bulbul speaks Telugu natively — faster, and it reads Indic numbers/dates cleanly.
+# So Telugu defaults to Sarvam whenever a Sarvam key exists (falls back to eleven_v3 if not).
+# Force eleven_v3 with TELUGU_TTS=elevenlabs.
+TELUGU_TTS = _clean("TELUGU_TTS", "sarvam").lower()
 
 # Probe results (set by probe_elevenlabs at startup)
 _eleven_ok: bool | None = None
@@ -249,13 +272,26 @@ async def _sarvam(text: str, lang: str = "english") -> tuple[bytes | None, str |
 
 
 async def synthesize(text: str, lang: str = "english") -> tuple[bytes | None, str | None]:
-    text = _strip_audio_tags((text or "").strip())   # speak exactly the reply, no stray tags
+    text = _fix_pronunciation(_strip_audio_tags((text or "").strip()))
     if not text or TTS_PROVIDER == "none":
         return None, None
+
+    lng = (lang or "").lower()
 
     # Lazy probe (serverless cold start may not have run the startup hook).
     if _eleven_ok is None:
         await probe_elevenlabs()
+
+    # Telugu: prefer Sarvam Bulbul — faster than the slow eleven_v3 and native to the language
+    # (also reads numbers/dates more cleanly). Only when a Sarvam key exists; else fall through
+    # to ElevenLabs v3 as before.
+    if lng == "telugu" and TELUGU_TTS == "sarvam" and SARVAM_KEY:
+        try:
+            audio, mime = await _sarvam(text, lang)
+            if audio:
+                return audio, mime
+        except Exception:
+            pass  # fall through to ElevenLabs v3
 
     # Preferred: ElevenLabs (if probe said it's usable)
     if TTS_PROVIDER == "elevenlabs" and _eleven_ok:
