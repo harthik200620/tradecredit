@@ -131,7 +131,9 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
                 return "खेद है जी — नोट कर लिया, हमारे अधिकारी जल्द संपर्क करेंगे। धन्यवाद।"
             if outcome == "callback_requested":
                 return "ज़रूर जी, हमारे अधिकारी आपको कॉल कर लेंगे। और कुछ मदद करूँ जी?"
-            return "ठीक है जी — नोट कर लिया, लिंक व्हाट्सऐप पर भेज रही हूँ। और कुछ मदद करूँ जी?"
+            if outcome == "declined":
+                return "कोई बात नहीं जी, मैं समझती हूँ — कोई दबाव नहीं। अगर बाद में चाहें तो लिंक व्हाट्सऐप पर रहेगा। आपका दिन शुभ हो!"
+            return "ठीक है जी, कोई दबाव नहीं — जब सुविधा हो तब लिंक व्हाट्सऐप पर मौजूद रहेगा। धन्यवाद जी!"
         if lang == "telugu":
             if outcome == "promise_to_pay":
                 dt = f" {ptp} కి" if ptp else ""
@@ -145,7 +147,9 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
                 return "క్షమించండి అండి — నోట్ చేశాను, మా ఆఫీసర్ త్వరలో కాల్ చేస్తారు."
             if outcome == "callback_requested":
                 return "తప్పకుండా అండి, మా ఆఫీసర్ మీకు కాల్ చేస్తారు. ఇంకేమైనా సహాయం కావాలా అండి?"
-            return "సరే అండి — నోట్ చేశాను, లింక్ వాట్సాప్ లో పంపిస్తున్నాను. ఇంకేమైనా సహాయం కావాలా అండి?"
+            if outcome == "declined":
+                return "పర్వాలేదు అండి, నేను అర్థం చేసుకుంటాను — ఎలాంటి ఒత్తిడి లేదు. తర్వాత కావాలంటే లింక్ వాట్సాప్ లో ఉంటుంది. మీ రోజు బాగుండాలి!"
+            return "సరే అండి, ఎలాంటి ఒత్తిడి లేదు — వీలైనప్పుడు లింక్ వాట్సాప్ లో ఉంటుంది. ధన్యవాదాలు అండి!"
         if outcome == "promise_to_pay":
             dt = f" for {ptp}" if ptp else ""
             return f"Noted{dt} — the payment link is on its way on WhatsApp. Anything else I can help with?"
@@ -158,7 +162,9 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
             return "I'm sorry for the trouble — noted; an officer will call you shortly."
         if outcome == "callback_requested":
             return "Of course — one of our officers will call you. Anything else I can help with?"
-        return "Alright, noted — the payment link is on WhatsApp. Anything else I can help with?"
+        if outcome == "declined":
+            return "That's alright, I completely understand — no pressure at all. The link stays on WhatsApp if you ever need it. Have a good day!"
+        return "Alright, no pressure at all — whenever it's convenient, the link will be on WhatsApp. Thank you!"
 
     if tool == "book_appointment":
         service = str(a.get("service") or "appointment").strip()

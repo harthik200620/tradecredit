@@ -159,6 +159,7 @@ _OUTCOME_PRETTY = {
     "needs_time": "Needs time",
     "dispute": "Dispute raised",
     "callback_requested": "Officer callback",
+    "declined": "Declined to pay",
     "no_commitment": "No commitment",
 }
 

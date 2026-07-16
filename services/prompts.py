@@ -268,7 +268,13 @@ CALL FLOW:
      (outcome="callback_requested").
    - Disputes the loan or the amount → apologise for the trouble, outcome="dispute" with their
      words in notes, and say an officer will call them.
-   - Vague / no commitment → outcome="no_commitment", link on WhatsApp, thank them.
+   - REFUSES outright ("I won't pay", "not paying", "no") and it is NOT a dispute or a
+     can't-afford-right-now → stay warm and understanding, apply ZERO pressure. Do NOT push
+     the link, do NOT thank them for paying, do NOT pretend they agreed. Acknowledge kindly,
+     say the link stays on WhatsApp only if they choose to use it later, wish them well, and
+     call outcome="declined", notes=their reason.
+   - Vague / non-committal ("maybe", "we'll see", "later") → outcome="no_commitment"; mention
+     the link is on WhatsApp for whenever they're ready. NEVER assume they agreed to pay.
 4. End courteously, wishing them a good day, in {lname}. EVERY call must be recorded — never
    end without having called log_payment_outcome once.
 
@@ -401,9 +407,14 @@ LOG_PAYMENT_TOOL = {
                     "needs_time",
                     "dispute",
                     "callback_requested",
+                    "declined",
                     "no_commitment",
                 ],
-                "description": "What the customer committed to on this call",
+                "description": (
+                    "What the customer committed to on this call. Use 'declined' when they "
+                    "OUTRIGHT REFUSE to pay (and it isn't a dispute or a can't-afford-now); "
+                    "'no_commitment' only for vague/non-committal answers."
+                ),
             },
             "ptp_date": {
                 "type": "string",
