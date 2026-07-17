@@ -47,12 +47,28 @@ _KEYS = _load_keys()
 _key_idx = 0   # round-robins one step per request (spreads load) + advances on quota/invalid
 
 # Sanitize the model: fall back to a known-good id if the env value is empty or garbled.
-# "gemini-flash-lite-latest" is Google's rolling alias — pinned ids (e.g. 2.5-flash-lite) get
-# retired for NEWER accounts while older ones keep them, so with 12 keys from mixed-age
-# accounts only the alias works everywhere.
+# Default is "gemini-flash-latest" (NOT the -lite tier): far more capable — thinks better,
+# handles tricky/emotional replies maturely, sounds human instead of a reflexive bot. It's a
+# rolling alias, so it stays valid across all 12 mixed-age keys (pinned ids get retired for
+# newer accounts). Set GEMINI_MODEL to override.
 _raw_model = _clean("GEMINI_MODEL")
-GEMINI_MODEL = _raw_model if re.fullmatch(r"gemini-[A-Za-z0-9.\-]+", _raw_model) else "gemini-flash-lite-latest"
+GEMINI_MODEL = _raw_model if re.fullmatch(r"gemini-[A-Za-z0-9.\-]+", _raw_model) else "gemini-flash-latest"
 _URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+# Let the model THINK briefly before it answers — this is what turns a reflexive, bot-like
+# reply into a considered, wise one (understand the intent, then respond). Costs a little
+# latency. Tune with GEMINI_THINKING_BUDGET (0 = off, back to instant snap replies).
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(_clean(name, str(default)) or default)
+    except ValueError:
+        return default
+
+
+_THINKING_BUDGET = max(0, _int_env("GEMINI_THINKING_BUDGET", 512))
+# When thinking is on, the visible answer shares the token pool with the thinking, so give it
+# generous headroom (the prompt still keeps the spoken reply to one short sentence).
+_MAX_OUTPUT_TOKENS = max(1024, _THINKING_BUDGET + 512) if _THINKING_BUDGET > 0 else 220
 
 # Fields each tool needs before it may fire; the server enforces this even if the model rushes.
 _REQUIRED_BY_TOOL = {
@@ -307,12 +323,13 @@ async def _generate(contents: list, scenario: str = "lead", lang: str = "") -> d
         "contents": contents,
         "tools": [{"functionDeclarations": tools_for(scenario)}],
         "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
-        # Replies are ONE short sentence; a tight cap + thinking off keeps generation fast.
-        # (220 leaves room for qualify_lead's full JSON args — the largest tool call.)
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 220},
+        # The spoken reply stays ONE short sentence (enforced by the prompt); the token cap is
+        # generous only so the model's brief THINKING isn't truncated.
+        "generationConfig": {"temperature": 0.7, "maxOutputTokens": _MAX_OUTPUT_TOKENS},
     }
     if "2.5" in GEMINI_MODEL or GEMINI_MODEL.endswith("-latest"):
-        body["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
+        # Think a little before answering → considered, human replies instead of snap ones.
+        body["generationConfig"]["thinkingConfig"] = {"thinkingBudget": _THINKING_BUDGET}
     url = _URL.format(model=GEMINI_MODEL)
     last_err = None
     client = _http.client()  # shared keep-alive client (no per-call TLS handshake)
