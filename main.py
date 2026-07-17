@@ -72,6 +72,14 @@ async def config():
         "voice_detail": tts.eleven_reason(),
         "model": llm.GEMINI_MODEL,
         "llm_keys": llm.key_count(),
+        # Which voice each language actually resolves to on THIS deploy — lets you verify a
+        # voice change went live at a glance (GET /config), instead of guessing from audio.
+        "voices": {
+            "english": tts._voice_for("english"),
+            "hindi": tts._voice_for("hindi"),
+            "telugu": tts._voice_for("telugu"),
+        },
+        "telugu_tts": tts.TELUGU_TTS,   # "sarvam" (fast/native) or "elevenlabs"
     }
 
 

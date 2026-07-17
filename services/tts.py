@@ -57,7 +57,8 @@ _eleven_key_idx = 0
 ELEVEN_KEY = _ELEVEN_KEYS[0] if _ELEVEN_KEYS else ""
 # English voice: PINNED here to the dedicated Indian-English voice, so the change applies on
 # deploy without editing any hosting env var (an env value would otherwise override it).
-# Override later via ELEVENLABS_VOICE_ID_EN if ever needed.
+# This is a PREMADE ElevenLabs voice, so it works on ANY account's API key (old or new) — no
+# account/key match needed. Override later via ELEVENLABS_VOICE_ID_EN if ever needed.
 ELEVEN_VOICE = _clean("ELEVENLABS_VOICE_ID_EN") or "oO7sLA3dWfQXsKeSAjpA"   # English (Indian English)
 # Hindi / Telugu are UNCHANGED: their own voice if set, otherwise the account's existing
 # ELEVENLABS_VOICE_ID — i.e. exactly the voice they use today. So Hindi is not affected.
