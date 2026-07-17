@@ -84,21 +84,20 @@ _OUTPUT_FORMAT = _clean("ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128")
 
 
 def _voice_settings_for(lang: str) -> dict:
-    """Tuned for a CLEAR, WARM, PROFESSIONAL read — not theatrical.
-      • high similarity_boost  → keeps the chosen voice's own timbre (sweet, recognisable)
-      • low style              → removes exaggerated emphasis / accent swings ("too much
-                                 prosody" that makes it hard to follow)
-      • stability              → steady on multilingual_v2 (EN/HI); eleven_v3 (Telugu) reads
-                                 most naturally at 0.5 — pushing it higher there goes flat.
-      • use_speaker_boost      → lifts intelligibility.
-    Every knob is env-overridable (ELEVENLABS_STABILITY / _SIMILARITY / _STYLE) for quick
-    A/B tuning once you hear a call, no code change needed."""
-    is_v3 = _model_for(lang) == ELEVEN_MODEL         # eleven_v3 path (Telugu)
-    default_stability = "0.5" if is_v3 else "0.6"
+    """ElevenLabs' natural, clean defaults — the settings LEAST likely to sound weird/warbly.
+      • stability 0.5   → the "natural" default: even but not flat.
+      • similarity 0.75 → high enough to keep the voice's timbre, but NOT so high that it
+                          reproduces artifacts from the source audio (a common cause of a
+                          weird, robotic quality — especially on English).
+      • style 0.0       → no exaggerated emphasis; neutral and easy to listen to.
+      • use_speaker_boost → lifts intelligibility.
+    NOTE: these knobs only shape DELIVERY. The accent/quality of English comes from the VOICE
+    you pick (ELEVENLABS_VOICE_ID) — a clean native-English voice matters far more than any
+    setting. Every knob is env-overridable (ELEVENLABS_STABILITY / _SIMILARITY / _STYLE)."""
     return {
-        "stability": _float_env("ELEVENLABS_STABILITY", default_stability),
-        "similarity_boost": _float_env("ELEVENLABS_SIMILARITY", "0.85"),
-        "style": _float_env("ELEVENLABS_STYLE", "0.1"),
+        "stability": _float_env("ELEVENLABS_STABILITY", "0.5"),
+        "similarity_boost": _float_env("ELEVENLABS_SIMILARITY", "0.75"),
+        "style": _float_env("ELEVENLABS_STYLE", "0.0"),
         "use_speaker_boost": True,
     }
 
