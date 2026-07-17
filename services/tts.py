@@ -55,9 +55,15 @@ def _load_eleven_keys() -> list[str]:
 _ELEVEN_KEYS = _load_eleven_keys()
 _eleven_key_idx = 0
 ELEVEN_KEY = _ELEVEN_KEYS[0] if _ELEVEN_KEYS else ""
-ELEVEN_VOICE = _clean("ELEVENLABS_VOICE_ID")                        # English (primary)
-ELEVEN_VOICE_HI = _clean("ELEVENLABS_VOICE_ID_HI") or ELEVEN_VOICE  # Hindi — own voice if set
-ELEVEN_VOICE_TE = _clean("ELEVENLABS_VOICE_ID_TE") or ELEVEN_VOICE  # Telugu — own voice if set
+# English voice: PINNED here to the dedicated Indian-English voice, so the change applies on
+# deploy without editing any hosting env var (an env value would otherwise override it).
+# Override later via ELEVENLABS_VOICE_ID_EN if ever needed.
+ELEVEN_VOICE = _clean("ELEVENLABS_VOICE_ID_EN") or "oO7sLA3dWfQXsKeSAjpA"   # English (Indian English)
+# Hindi / Telugu are UNCHANGED: their own voice if set, otherwise the account's existing
+# ELEVENLABS_VOICE_ID — i.e. exactly the voice they use today. So Hindi is not affected.
+_ENV_PRIMARY_VOICE = _clean("ELEVENLABS_VOICE_ID")
+ELEVEN_VOICE_HI = _clean("ELEVENLABS_VOICE_ID_HI") or _ENV_PRIMARY_VOICE or ELEVEN_VOICE  # Hindi
+ELEVEN_VOICE_TE = _clean("ELEVENLABS_VOICE_ID_TE") or _ENV_PRIMARY_VOICE or ELEVEN_VOICE  # Telugu
 ELEVEN_MODEL = _clean("ELEVENLABS_MODEL_ID", "eleven_v3")            # Telugu (v3-only language)
 # EN/HI ride multilingual_v2: steadier pronunciation (Indian place names!) and faster than v3.
 ELEVEN_MODEL_ENHI = _clean("ELEVENLABS_MODEL_ID_ENHI", "eleven_multilingual_v2")
