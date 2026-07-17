@@ -57,6 +57,31 @@ async def crm_page():
     return FileResponse(str(STATIC_DIR / "crm.html"))
 
 
+@app.get("/debug/tts")
+async def debug_tts(lang: str = "english"):
+    """TEMPORARY diagnostic: try a real ElevenLabs synth for a language's voice with a few
+    models and report the raw status/error — reveals WHY a voice falls back to Sarvam
+    (404 = voice not in this key's account, 401 = bad key, 4xx = model incompatible, etc.).
+    Reveals only the voice id and a 6-char key prefix, never the full key."""
+    voice = tts._voice_for(lang)
+    key = tts._ELEVEN_KEYS[0] if tts._ELEVEN_KEYS else tts.ELEVEN_KEY
+    out = {"lang": lang, "voice": voice, "key_prefix": (key[:6] + "…") if key else "NONE",
+           "keys_count": len(tts._ELEVEN_KEYS), "attempts": []}
+    for model in (tts._model_for(lang), "eleven_v3", "eleven_multilingual_v2"):
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}"
+        body = {"text": "This is a test.", "model_id": model}
+        try:
+            resp = await tts._http.client().post(
+                url, headers={"xi-api-key": key, "Content-Type": "application/json"},
+                params={"output_format": "mp3_44100_128"}, json=body,
+            )
+            out["attempts"].append({"model": model, "status": resp.status_code,
+                                    "detail": "ok" if resp.status_code < 400 else resp.text[:220]})
+        except Exception as e:
+            out["attempts"].append({"model": model, "error": f"{type(e).__name__}: {e}"[:220]})
+    return out
+
+
 @app.get("/config")
 async def config():
     # The page hits /config on load — use it to warm the ElevenLabs probe on a serverless
