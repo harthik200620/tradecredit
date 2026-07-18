@@ -152,6 +152,9 @@ TELUGU_TTS = _clean("TELUGU_TTS", "sarvam").lower()
 # Probe results (set by probe_elevenlabs at startup)
 _eleven_ok: bool | None = None
 _eleven_reason: str = "not probed"
+# Voices this key can't speak (402 paid_plan_required on library voices, 404 voice_not_found).
+# Tracked PER VOICE — one dead voice must never silence the languages whose voices work.
+_dead_voices: set[str] = set()
 
 
 def eleven_ok() -> bool:
@@ -215,7 +218,8 @@ async def _elevenlabs(text: str, lang: str = "english") -> tuple[bytes | None, s
     when every key is exhausted it flips _eleven_ok off so later turns skip the wasted call
     and go straight to Sarvam (no extra latency, and /config reports the truth)."""
     global _eleven_key_idx, _eleven_ok, _eleven_reason
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{_voice_for(lang)}"
+    voice = _voice_for(lang)
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice}"
     params = {"output_format": _OUTPUT_FORMAT}  # crisp, clear consonants
     body = {
         "text": text,
@@ -243,14 +247,13 @@ async def _elevenlabs(text: str, lang: str = "english") -> tuple[bytes | None, s
     if quota_fail:
         _eleven_ok = False
         _eleven_reason = "ElevenLabs credits exhausted (all keys) — speaking with Sarvam fallback"
-    elif resp.status_code == 402:
-        # paid_plan_required — account-wide, so disable ElevenLabs entirely.
-        _eleven_ok = False
-        _eleven_reason = "ElevenLabs paid plan required — speaking with Sarvam fallback"
-    # NOTE: a 404 is voice_not_found — specific to THIS voice/account (e.g. an English voice
-    # that isn't in the key's account). We deliberately do NOT flip _eleven_ok off for it, so a
-    # bad voice in one language can't disable ElevenLabs for the others (e.g. Hindi keeps
-    # working). This call just falls back to Sarvam.
+    elif resp.status_code in (402, 404):
+        # 402 paid_plan_required (library voice on a free account) or 404 voice_not_found —
+        # both are specific to THIS voice on this key, NOT account-wide: an owned Voice-Design
+        # voice can return 200 while library voices 402. Kill just this voice so later turns
+        # skip the wasted call; the other languages keep their working voices.
+        _dead_voices.add(voice)
+        _eleven_reason = f"voice {voice} unusable ({resp.status_code}) — Sarvam for that language"
     raise RuntimeError(f"ElevenLabs failed ({resp.status_code}): {last_detail}")
 
 
@@ -299,8 +302,8 @@ async def synthesize(text: str, lang: str = "english") -> tuple[bytes | None, st
         except Exception:
             pass  # fall through to ElevenLabs v3
 
-    # Preferred: ElevenLabs (if probe said it's usable)
-    if TTS_PROVIDER == "elevenlabs" and _eleven_ok:
+    # Preferred: ElevenLabs (if probe said it's usable and this language's voice isn't dead)
+    if TTS_PROVIDER == "elevenlabs" and _eleven_ok and _voice_for(lng) not in _dead_voices:
         try:
             audio, mime = await _elevenlabs(text, lang)
             if audio:
