@@ -798,11 +798,11 @@ async function sendTyped(){
 
 // ── Mic capture (Sarvam path): AudioWorklet + energy VAD + WAV encode ─────────
 let capturing=false, speechFrames=[], preRoll=[], silentSamples=0, speechSamples=0, voicedSamples=0, srate=48000;
-const PREROLL_MS=300, SILENCE_END_MS=550, MIN_SPEECH_MS=300, MAX_TURN_MS=15000;
+const PREROLL_MS=300, SILENCE_END_MS=420, MIN_SPEECH_MS=300, MAX_TURN_MS=15000;
 // A full phrase (>= MIN_COMPLETE_MS of actual voice) ends on a normal pause; a short fragment
 // is given a bit longer to continue before we finalize it. Tuned FAST — the agent replies
 // about half a second after you stop talking.
-const MIN_COMPLETE_MS=700, FRAGMENT_WAIT_MS=1500;
+const MIN_COMPLETE_MS=700, FRAGMENT_WAIT_MS=1100;
 
 async function startMic(){
   try{
