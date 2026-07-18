@@ -55,18 +55,13 @@ def _load_eleven_keys() -> list[str]:
 _ELEVEN_KEYS = _load_eleven_keys()
 _eleven_key_idx = 0
 ELEVEN_KEY = _ELEVEN_KEYS[0] if _ELEVEN_KEYS else ""
-# English voice. NOTE: the originally-chosen voice oO7sLA3dWfQXsKeSAjpA is a community
-# Voice-LIBRARY voice, which ElevenLabs BLOCKS on FREE accounts (402 payment_required) — so it
-# cannot play until the account is on a paid plan. As a working FREE voice we pin
-# FBXIexttoePwOX9wMMee, which IS usable on this account's free plan (verified 200 via API).
-# → After upgrading to a paid ElevenLabs plan, set env ELEVENLABS_VOICE_ID_EN=oO7sLA3dWfQXsKeSAjpA
-#   to switch English back to the chosen Indian-English voice (no code change needed).
-ELEVEN_VOICE = _clean("ELEVENLABS_VOICE_ID_EN") or "FBXIexttoePwOX9wMMee"   # English (free-usable)
-# Hindi / Telugu are UNCHANGED: their own voice if set, otherwise the account's existing
-# ELEVENLABS_VOICE_ID — i.e. exactly the voice they use today. So Hindi is not affected.
+# One voice per language, straight from env — ELEVENLABS_VOICE_ID is the English/primary
+# voice (ELEVENLABS_VOICE_ID_EN overrides it if ever set); Hindi and Telugu use their own
+# ids and fall back to the primary when unset. No hardcoded voice ids in code.
 _ENV_PRIMARY_VOICE = _clean("ELEVENLABS_VOICE_ID")
-ELEVEN_VOICE_HI = _clean("ELEVENLABS_VOICE_ID_HI") or _ENV_PRIMARY_VOICE or ELEVEN_VOICE  # Hindi
-ELEVEN_VOICE_TE = _clean("ELEVENLABS_VOICE_ID_TE") or _ENV_PRIMARY_VOICE or ELEVEN_VOICE  # Telugu
+ELEVEN_VOICE = _clean("ELEVENLABS_VOICE_ID_EN") or _ENV_PRIMARY_VOICE                     # English
+ELEVEN_VOICE_HI = _clean("ELEVENLABS_VOICE_ID_HI") or _ENV_PRIMARY_VOICE                  # Hindi
+ELEVEN_VOICE_TE = _clean("ELEVENLABS_VOICE_ID_TE") or _ENV_PRIMARY_VOICE                  # Telugu
 ELEVEN_MODEL = _clean("ELEVENLABS_MODEL_ID", "eleven_v3")            # Telugu (v3-only language)
 # EN/HI ride multilingual_v2: steadier pronunciation (Indian place names!) and faster than v3.
 ELEVEN_MODEL_ENHI = _clean("ELEVENLABS_MODEL_ID_ENHI", "eleven_multilingual_v2")
