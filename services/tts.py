@@ -14,6 +14,8 @@ from __future__ import annotations
 import os
 import re
 import base64
+import asyncio
+
 import httpx
 
 from . import _http
@@ -155,6 +157,7 @@ _eleven_reason: str = "not probed"
 # Voices this key can't speak (402 paid_plan_required on library voices, 404 voice_not_found).
 # Tracked PER VOICE — one dead voice must never silence the languages whose voices work.
 _dead_voices: set[str] = set()
+_probe_fails = 0  # consecutive probe exceptions (see probe_elevenlabs)
 
 
 def eleven_ok() -> bool:
@@ -178,7 +181,7 @@ def active_provider() -> str:
 
 async def probe_elevenlabs() -> None:
     """Check whether the configured ElevenLabs model is available on this key."""
-    global _eleven_ok, _eleven_reason
+    global _eleven_ok, _eleven_reason, _probe_fails
     if TTS_PROVIDER != "elevenlabs":
         _eleven_ok = False
         _eleven_reason = f"TTS_PROVIDER={TTS_PROVIDER}"
@@ -209,8 +212,15 @@ async def probe_elevenlabs() -> None:
                 f"available: {sorted(i for i in ids if i)}"
             )
     except Exception as e:
-        _eleven_ok = False
-        _eleven_reason = f"probe failed ({type(e).__name__}: {e}) — falling back to Sarvam"
+        # Transient (network flake): leave _eleven_ok as None so the next turn re-probes —
+        # a single hiccup must not lock this instance onto Sarvam for its whole life (that's
+        # how calls ended up switching voices between turns). After 3 straight failures,
+        # accept it's really down so we stop paying the probe latency every turn.
+        _probe_fails += 1
+        _eleven_ok = False if _probe_fails >= 3 else None
+        _eleven_reason = f"probe failed ({type(e).__name__}: {e}) — Sarvam this turn"
+        return
+    _probe_fails = 0
 
 
 async def _elevenlabs(text: str, lang: str = "english") -> tuple[bytes | None, str | None]:
@@ -228,7 +238,7 @@ async def _elevenlabs(text: str, lang: str = "english") -> tuple[bytes | None, s
         "voice_settings": _voice_settings_for(lang),
     }
     last_detail, quota_fail = "", False
-    for _ in range(max(1, len(_ELEVEN_KEYS))):
+    for attempt in range(max(3, len(_ELEVEN_KEYS))):
         key = _ELEVEN_KEYS[_eleven_key_idx] if _ELEVEN_KEYS else ELEVEN_KEY
         resp = await _http.client().post(
             url, headers={"xi-api-key": key, "Content-Type": "application/json"},
@@ -240,8 +250,16 @@ async def _elevenlabs(text: str, lang: str = "english") -> tuple[bytes | None, s
         # 401 / quota_exceeded = the KEY is dead (flip off). A bare 429 is usually just the
         # free tier's 2-concurrent-request limit — transient, never disable the voice for it.
         quota_fail = resp.status_code == 401 or "quota_exceeded" in last_detail
-        if (quota_fail or resp.status_code == 429) and len(_ELEVEN_KEYS) > 1:
-            _eleven_key_idx = (_eleven_key_idx + 1) % len(_ELEVEN_KEYS)
+        if quota_fail:
+            if len(_ELEVEN_KEYS) > 1:
+                _eleven_key_idx = (_eleven_key_idx + 1) % len(_ELEVEN_KEYS)
+                continue
+            break  # single dead key — no point retrying it
+        if resp.status_code == 429 or resp.status_code >= 500:
+            # Transient: the concurrency slot frees when the in-flight synth finishes.
+            # WAIT and retry with the SAME voice — falling back to Sarvam here is what made
+            # one line of a call speak in a different voice.
+            await asyncio.sleep(0.8 * (attempt + 1))
             continue
         break
     if quota_fail:
