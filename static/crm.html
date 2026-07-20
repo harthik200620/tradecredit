@@ -78,23 +78,22 @@
       <text x="29" y="38" text-anchor="middle" font-family="Fraunces,serif" font-weight="700" font-size="24" fill="#E8B44C">V</text>
     </svg>
     <div class="brand">
-      <h1>Verba CRM</h1>
-      <div class="sub">Every conversation writes back here automatically — no typing, no follow-up forms.</div>
+      <h1>TradeCredit CRM</h1>
+      <div class="sub">Every call writes back here automatically — promise-to-pay dates, lead status, no typing.</div>
     </div>
     <div class="live"><span class="dot"></span>LIVE<span id="count" style="color:var(--muted);font-weight:500">· 0 records</span></div>
     <a class="back" href="/">← Agents</a>
   </header>
 
   <div class="filters">
-    <button class="fchip" data-k="lead">🏠 Verba Realty · Leads</button>
-    <button class="fchip" data-k="collections">💳 Suvidha Finserv · Collections</button>
-    <button class="fchip" data-k="clinic">🦷 Ananya Clinic · Bookings &amp; Enquiries</button>
+    <button class="fchip" data-k="collections">💳 Collections · Instalments</button>
+    <button class="fchip" data-k="lead">🛒 Retailer Leads · Onboarding</button>
   </div>
 
   <div class="list" id="list">
     <div class="emptybox" id="empty">
       <div class="big">Waiting for the first record…</div>
-      Run any of the three agents — the moment a call or chat ends in an outcome,
+      Run either agent — the moment a call ends in an outcome,
       it appears here by itself. That's the write-back.
     </div>
   </div>
@@ -111,7 +110,7 @@ const KIND = {
 };
 // Three separate CRMs — one per business. The tab picks whose CRM you're looking at.
 const params = new URLSearchParams(location.search);
-let adminPw='', records={}, filter=(['lead','collections','clinic'].includes(params.get('s')) ? params.get('s') : 'lead');
+let adminPw='', records={}, filter=(['lead','collections','clinic'].includes(params.get('s')) ? params.get('s') : 'collections');
 
 function key(r){ return (r.kind||'x')+'-'+(r.id||0); }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }

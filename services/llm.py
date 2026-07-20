@@ -176,16 +176,16 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
             return "Of course — we'll call you back later. Thank you!"
         # interested
         if lang == "hindi":
-            ar = f"{area} में " if area else ""
-            return (f"{ar}आपके बजट में बेहद खूबसूरत ऑप्शन हैं — हमारी प्रॉपर्टी टीम जल्द आपसे "
-                    "संपर्क करेगी। और कुछ जानना चाहेंगे जी?")
+            ar = f"{area} की " if area else ""
+            return (f"बहुत बढ़िया जी — {ar}आपकी स्टॉक खरीदारी ट्रेडक्रेडिट पर हो सकती है, हमारे "
+                    "ऑनबोर्डिंग एग्ज़िक्यूटिव जल्द आपकी दुकान पर आएँगे। और कुछ जानना चाहेंगे जी?")
         if lang == "telugu":
             ar = f"{area} లో " if area else ""
-            return (f"{ar}మీ బడ్జెట్ లో చాలా అందమైన ఆప్షన్స్ ఉన్నాయి అండి — మా ప్రాపర్టీ టీమ్ "
-                    "త్వరలో సంప్రదిస్తుంది. ఇంకేమైనా తెలుసుకోవాలా అండి?")
-        ar = f" in {area}" if area else ""
-        return (f"There are beautiful options{ar} at that budget — our property team will "
-                "share them shortly. Anything else you'd like to know?")
+            return (f"చాలా మంచిది అండి — {ar}మీ స్టాక్ కొనుగోళ్లు ట్రేడ్‌క్రెడిట్ మీద చేయవచ్చు, మా "
+                    "ఆన్‌బోర్డింగ్ ఎగ్జిక్యూటివ్ త్వరలో మీ షాప్ కి వస్తారు. ఇంకేమైనా తెలుసుకోవాలా అండి?")
+        ar = f" at {area}" if area else ""
+        return (f"Perfect — TradeCredit can cover your weekly stock purchases{ar}; our "
+                "onboarding executive will visit your shop shortly. Anything else you'd like to know?")
 
     if tool == "log_enquiry":
         if lang == "hindi":

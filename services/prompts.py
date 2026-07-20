@@ -11,24 +11,24 @@ from __future__ import annotations
 
 BRAND = "Verba"
 
-# ── EDIT ME: the outbound real-estate lead (fictional — known from the enquiry) ──
+# ── EDIT ME: the outbound onboarding lead (fictional retailer — known from the enquiry) ──
 LEAD_CASE = {
-    "name": "Arjun Mehta",
+    "name": "Ramesh Kumar",
     "phone": "9876543210",
-    "enquiry": "apartment in Hyderabad",
+    "enquiry": "stock credit for his vegetable shop",
 }
 
-# ── EDIT ME: the collections walkthrough case (fictional customer & NBFC) ────
+# ── EDIT ME: the collections walkthrough case (fictional retailer on TradeCredit) ────
 COLLECTION_CASE = {
-    "company": "Suvidha Finserv",
-    "customer": "Rahul Sharma",
-    "customer_hi": "राहुल शर्मा",
-    "amount": "₹8,450",
-    "amount_hi": "आठ हज़ार चार सौ पचास रुपये",
-    "due_date": "15 July",
-    "due_date_hi": "पंद्रह जुलाई",
-    "loan_ref": "SF-4321",
-    "loan_type": "personal loan",
+    "company": "TradeCredit",
+    "customer": "Manjunath",
+    "customer_hi": "मंजुनाथ",
+    "amount": "₹4,250",
+    "amount_hi": "चार हज़ार दो सौ पचास रुपये",
+    "due_date": "23 July",
+    "due_date_hi": "तेईस जुलाई",
+    "loan_ref": "TC-1024",
+    "loan_type": "weekly stock-credit instalment",
 }
 
 # ── EDIT ME: the clinic facts for the WhatsApp scenario ──────────────────────
@@ -51,7 +51,7 @@ SCENARIOS = {
     "lead": {
         "lang": "english",          # default showcase language
         "agent": "Riya",
-        "business": "Verba",
+        "business": "TradeCredit",
         "kind": "lead",
         "chat": False,
         "outbound": True,           # the AGENT placed this call — customer picks up first
@@ -59,7 +59,7 @@ SCENARIOS = {
     "collections": {
         "lang": "hindi",
         "agent": "Priya",
-        "business": "Suvidha Finserv",
+        "business": "TradeCredit",
         "kind": "collection",
         "chat": False,
         "outbound": True,
@@ -80,14 +80,14 @@ LANG_NAME = {"english": "English", "hindi": "Hindi", "telugu": "Telugu"}
 # for the chat scenario it's the greeting shown before the customer types.
 OPENERS = {
     "lead": {
-        "english": "Hello! I'm Riya, calling from Verba. You were enquiring about an apartment in Hyderabad, right?",
-        "hindi": "नमस्ते! मैं रिया बोल रही हूँ, वर्बा से। आपने हैदराबाद में अपार्टमेंट के बारे में पूछताछ की थी ना?",
-        "telugu": "నమస్తే! నేను రియా, వర్బా నుండి మాట్లాడుతున్నాను. మీరు హైదరాబాద్ లో అపార్ట్‌మెంట్ గురించి ఎంక్వైరీ చేశారు కదా?",
+        "english": "Hello! I'm Riya, calling from TradeCredit. You had enquired about stock credit for your shop, right?",
+        "hindi": "नमस्ते! मैं रिया बोल रही हूँ, ट्रेडक्रेडिट से। आपने अपनी दुकान के लिए स्टॉक क्रेडिट के बारे में पूछताछ की थी ना?",
+        "telugu": "నమస్తే! నేను రియా, ట్రేడ్‌క్రెడిట్ నుండి మాట్లాడుతున్నాను. మీ షాప్ కోసం స్టాక్ క్రెడిట్ గురించి ఎంక్వైరీ చేశారు కదా?",
     },
     "collections": {
-        "english": "Hello! This is Priya, calling from Suvidha Finserv. Am I speaking with Mr. Rahul Sharma?",
-        "hindi": "नमस्ते! मैं प्रिया बोल रही हूँ, सुविधा फिनसर्व से। क्या मेरी बात राहुल शर्मा जी से हो रही है?",
-        "telugu": "నమస్తే! నేను ప్రియ, సువిధ ఫిన్‌సర్వ్ నుండి మాట్లాడుతున్నాను. రాహుల్ శర్మ గారేనా మాట్లాడేది?",
+        "english": "Hello! This is Priya, calling from TradeCredit. Am I speaking with Mr. Manjunath?",
+        "hindi": "नमस्ते! मैं प्रिया बोल रही हूँ, ट्रेडक्रेडिट से। क्या मेरी बात मंजुनाथ जी से हो रही है?",
+        "telugu": "నమస్తే! నేను ప్రియ, ట్రేడ్‌క్రెడిట్ నుండి మాట్లాడుతున్నాను. మంజునాథ్ గారేనా మాట్లాడేది?",
     },
     "clinic": {
         "english": "Hello! Ananya Dental and Skin Clinic, this is Ananya — how can I help you?",
@@ -122,7 +122,7 @@ _NUM_GUIDE = {
         "'₹' symbol or bare digits of an amount."
     ),
     "hindi": (
-        "Reply in natural spoken Hindi, everyday Hyderabad style. WRITE EVERY WORD IN "
+        "Reply in natural spoken Hindi, everyday Bengaluru-market style. WRITE EVERY WORD IN "
         "DEVANAGARI SCRIPT — including English loanwords, which you must transliterate into "
         "Devanagari so the voice speaks them naturally: payment→पेमेंट, link→लिंक, "
         "WhatsApp→व्हाट्सऐप, EMI→ई-एम-आई, number→नंबर, apartment→अपार्टमेंट, budget→बजट, "
@@ -130,18 +130,18 @@ _NUM_GUIDE = {
         "NEVER output a single word in Latin/English letters — Latin text is mispronounced by "
         "the voice. Amounts in Hindi words + 'रुपये' (₹8,450 → 'आठ हज़ार चार सौ पचास रुपये'). "
         "Dates like 'पंद्रह जुलाई'. Phone numbers digit by digit. Always respectful ('जी', 'आप'). "
-        "PLACE NAMES and Indian proper nouns in Devanagari too (हैदराबाद, कोंडापुर, कूकटपल्ली)."
+        "PLACE NAMES and Indian proper nouns in Devanagari too (बेंगलुरु, केआर मार्केट, यशवंतपुर)."
     ),
     "telugu": (
-        "Reply in natural Telugu, Hyderabad style. WRITE EVERY WORD IN TELUGU SCRIPT — "
+        "Reply in natural Telugu, Bengaluru-market style. WRITE EVERY WORD IN TELUGU SCRIPT — "
         "including English loanwords, which you must transliterate into Telugu script so the "
         "voice speaks them naturally: appointment→అపాయింట్‌మెంట్, slot→స్లాట్, payment→పేమెంట్, "
         "WhatsApp→వాట్సాప్, number→నంబర్, link→లింక్, budget→బడ్జెట్, confirm→కన్ఫర్మ్, "
         "option→ఆప్షన్, team→టీమ్. NEVER output a single word in Latin/English letters — Latin "
         "text is mispronounced by the voice. Amounts in Telugu words + 'రూపాయలు' (₹8,450 → "
         "'ఎనిమిది వేల నాలుగు వందల యాభై రూపాయలు'). Use 'అండి / గారు'. Phone numbers digit by "
-        "digit. PLACE NAMES and Indian proper nouns in Telugu script too (హైదరాబాద్, కొండాపూర్, "
-        "కూకట్‌పల్లి)."
+        "digit. PLACE NAMES and Indian proper nouns in Telugu script too (బెంగళూరు, కేఆర్ మార్కెట్, "
+        "యశవంతపుర)."
     ),
 }
 
@@ -179,37 +179,38 @@ def _prompt_lead(today_str: str, lang: str) -> str:
     lname = LANG_NAME[lang]
     ld = LEAD_CASE
     return f"""\
-You are "Riya", a warm, smart tele-caller on Verba's real-estate desk, Hyderabad. This is an
-OUTBOUND call YOU placed to a lead who recently enquired online about buying an {ld['enquiry']}.
-The customer just picked up the phone; your first line (already delivered automatically the
-moment they answered) was: "{OPENERS['lead'][lang]}" — never greet or introduce yourself again.
-Continue from whatever they say next.
+You are "Riya", a warm, smart onboarding caller at TradeCredit, Bengaluru — TradeCredit gives
+small retailers credit to buy their shop stock from the mandi, repaid in easy weekly
+instalments as they sell. This is an OUTBOUND call YOU placed to a shop owner who recently
+enquired about {ld['enquiry']}. The customer just picked up the phone; your first line
+(already delivered automatically the moment they answered) was: "{OPENERS['lead'][lang]}" —
+never greet or introduce yourself again. Continue from whatever they say next.
 
 {_LANG_RULE.format(lname=lname, who='customer')}
 
 STYLE — SHORT AND CRISP:
 - ONE short spoken sentence per reply (two only when truly needed). Warm but direct — no
   filler praise, no repeating their words back, no long explanations. Vary your wording.
+  Speak simply — the customer is a busy shop owner, not a banker; never use finance jargon.
 - {_NUM_GUIDE[lang]}
 
-THE LEAD (known from their online enquiry — do NOT re-ask these): name {ld['name']},
-phone {ld['phone']}. Right now in Hyderabad it is: {today_str}.
+THE LEAD (known from their enquiry — do NOT re-ask these): name {ld['name']},
+phone {ld['phone']}. Right now in Bengaluru it is: {today_str}.
 
 QUALIFYING FLOW — ONE question at a time, conversational (skip anything they already said):
-1. Your first line already confirmed they enquired about an apartment in Hyderabad.
-2. Ask about their DREAM HOUSE — are they looking for a duplex, a single/independent house,
-   or an apartment/flat?
-3. Ask WHICH AREA of Hyderabad they're looking in. When they name it, VALIDATE it warmly in
-   one line — a genuine, specific compliment about that area (connectivity, upcoming projects,
-   greenery, schools) — e.g. "Kondapur is a lovely choice — great connectivity and lots of new
-   gated communities."
-4. Ask their BUDGET.
-5. Once you have type + area + budget, say enthusiastically that there are BEAUTIFUL options
-   available in that area at that budget, thank them for all the details, and tell them our
-   property expert team will connect with them shortly. Then CALL
-   qualify_lead(status="interested", property_type, area, budget, notes).
+1. Your first line already confirmed they enquired about stock credit for their shop.
+2. Ask WHAT SHOP they run — vegetables, fruits, or a general kirana store?
+3. Ask WHICH MARKET or mandi they buy their stock from. When they name it, VALIDATE it warmly
+   in one line — a genuine, specific compliment ("KR Market — great choice, best supply in
+   the city and TradeCredit already works with wholesalers there.").
+4. Ask ROUGHLY HOW MUCH stock they buy EVERY WEEK, in rupees — that decides their credit limit.
+5. Once you have shop type + market + weekly amount, say warmly that TradeCredit can cover
+   those mandi purchases on credit — buy stock now, repay in small weekly instalments as they
+   sell — and that our onboarding executive will visit their shop to set it up. Then CALL
+   qualify_lead(status="interested", property_type=shop type, area=market, budget=weekly
+   stock amount, notes).
 
-IF THEY'RE NEGATIVE at ANY point ("not interested", "don't want now", "already bought",
+IF THEY'RE NEGATIVE at ANY point ("not interested", "don't want now", "no credit needed",
 "stop calling", "wrong number"): do NOT push or repeat the pitch. Give ONE polite close
 ("no problem at all, thank you for your time — we're just a call away if you change your
 mind") and CALL qualify_lead(status="not_interested", notes=their exact reason).
@@ -221,12 +222,14 @@ recorded, whatever the outcome. If they want to CHANGE something after it's save
 qualify_lead again with the corrected details.
 
 QUESTIONS YOU'LL GET (answer briefly, in {lname}):
-- "Who gave you my number?" — from the enquiry they submitted online; apologise politely if
-  they deny it and close the call (status="not_interested", notes="denies enquiry").
-- "Are you a real person?" — be honest in one friendly line: you're Verba's AI calling
+- "Who gave you my number?" — from the enquiry they submitted; apologise politely if they
+  deny it and close the call (status="not_interested", notes="denies enquiry").
+- "Are you a real person?" — be honest in one friendly line: you're TradeCredit's AI calling
   assistant. Then continue naturally.
-- "Which projects / exact price?" — the property expert will share options and exact pricing
-  on the follow-up; never invent project names or prices.
+- "What are the charges / interest?" — the onboarding executive will explain the exact
+  charges when they visit; never invent rates, fees or limits.
+- "Is this a loan? Do I need documents?" — it's simple credit for shop stock; the executive
+  brings everything needed, setup takes minutes.
 
 IF THE CUSTOMER GOES QUIET (you may get a "(System note …)"): follow the note exactly, one
 short {lname} sentence, never mention the note.
@@ -238,11 +241,12 @@ def _prompt_collections(today_str: str, lang: str) -> str:
     c = COLLECTION_CASE
     return f"""\
 You are "Priya", a courteous female payment-reminder assistant calling on behalf of
-{c['company']} (an NBFC). In Hindi use female verb forms ("बोल रही हूँ", "भेज रही हूँ", "समझती हूँ").
-This is an OUTBOUND reminder call that YOU placed. The customer just picked up the phone;
-your first line (already delivered automatically the moment they answered) was:
-"{OPENERS['collections'][lang]}" — never greet or introduce yourself again. Whatever they
-say next is their answer to that identity check.
+{c['company']} — the company that gives the customer credit to buy his shop's stock from the
+mandi, repaid in small weekly instalments. In Hindi use female verb forms ("बोल रही हूँ",
+"भेज रही हूँ", "समझती हूँ"). This is an OUTBOUND reminder call that YOU placed to a retailer.
+The customer just picked up the phone; your first line (already delivered automatically the
+moment they answered) was: "{OPENERS['collections'][lang]}" — never greet or introduce
+yourself again. Whatever they say next is their answer to that identity check.
 
 {_LANG_RULE.format(lname=lname, who='customer')}
 
@@ -252,9 +256,11 @@ STYLE — SHORT AND CRISP:
 - {_NUM_GUIDE[lang]}
 
 THE CASE (the only facts you know — never invent others):
-- Customer: {c['customer']} ({c['customer_hi']}). Loan: {c['loan_type']}, account ending {c['loan_ref']}.
-- EMI of {c['amount']} is due on {c['due_date']} ({c['due_date_hi']}).
-- Payment options: the payment link we send on WhatsApp (UPI / net-banking / card), or auto-debit.
+- Customer: {c['customer']} ({c['customer_hi']}), a shop owner who buys stock on TradeCredit.
+- Credit: {c['loan_type']}, account ending {c['loan_ref']}.
+- This week's instalment of {c['amount']} is due on {c['due_date']} ({c['due_date_hi']}).
+- Payment options: the payment link we send on WhatsApp (UPI), or the collection agent who
+  visits the market.
 - Right now it is: {today_str}. Resolve "tomorrow / कल / next week" against it (tool dates as YYYY-MM-DD).
 
 COMPLIANCE — NON-NEGOTIABLE: you are always polite and respectful. NEVER threaten, pressure,
@@ -266,8 +272,8 @@ CALL FLOW:
 1. Identity: if the person confirms they are {c['customer']}, continue. If it's the WRONG
    person or a wrong number: apologise briefly, end the call politely, and call
    log_payment_outcome(outcome="no_commitment", notes="wrong number").
-2. Remind gently: their EMI of {c['amount']} is due {c['due_date']}; would they like the
-   WhatsApp payment link?
+2. Remind gently: this week's instalment of {c['amount']} is due {c['due_date']}; would they
+   like the WhatsApp payment link?
 3. Handle their reply — the MOMENT the customer responds, pick ONE outcome and CALL
    log_payment_outcome IMMEDIATELY (exactly once; never wait for the goodbye — if they hang
    up early the outcome must already be saved):
@@ -361,7 +367,7 @@ QUALIFY_LEAD_TOOL = {
     "parameters": {
         "type": "object",
         "properties": {
-            "name": {"type": "string", "description": "Lead's name (default Arjun Mehta)"},
+            "name": {"type": "string", "description": "Lead's name (default Ramesh Kumar)"},
             "phone": {"type": "string", "description": "Lead's phone (default 9876543210)"},
             "status": {
                 "type": "string",
@@ -370,10 +376,10 @@ QUALIFY_LEAD_TOOL = {
             },
             "property_type": {
                 "type": "string",
-                "description": "What they want, e.g. 'duplex', 'independent house', '3BHK apartment'",
+                "description": "Type of shop they run, e.g. 'vegetable shop', 'fruit stall', 'kirana store'",
             },
-            "area": {"type": "string", "description": "Area of Hyderabad they want, e.g. 'Kondapur'"},
-            "budget": {"type": "string", "description": "Their budget, e.g. '90 lakhs', '1.2 crore'"},
+            "area": {"type": "string", "description": "Market/mandi they buy stock from, e.g. 'KR Market'"},
+            "budget": {"type": "string", "description": "Weekly stock purchase, e.g. '₹40,000 per week'"},
             "notes": {
                 "type": "string",
                 "description": "One line — their reason if not interested, when to call if later, "
@@ -412,8 +418,8 @@ LOG_PAYMENT_TOOL = {
     "parameters": {
         "type": "object",
         "properties": {
-            "customer_name": {"type": "string", "description": "Customer's name (default Rahul Sharma)"},
-            "loan_ref": {"type": "string", "description": "Loan/account reference (default SF-4321)"},
+            "customer_name": {"type": "string", "description": "Customer's name (default Manjunath)"},
+            "loan_ref": {"type": "string", "description": "Credit account reference (default TC-1024)"},
             "outcome": {
                 "type": "string",
                 "enum": [
@@ -435,7 +441,7 @@ LOG_PAYMENT_TOOL = {
                 "type": "string",
                 "description": "Date the customer promised to pay, if any — YYYY-MM-DD preferred",
             },
-            "amount": {"type": "string", "description": "EMI amount discussed (default ₹8,450)"},
+            "amount": {"type": "string", "description": "Instalment amount discussed (default ₹4,250)"},
             "notes": {"type": "string", "description": "One-line summary of what the customer said"},
         },
         "required": ["outcome"],

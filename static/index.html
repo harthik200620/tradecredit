@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Verba — AI Voice &amp; Chat Agents</title>
+<title>Verba × TradeCredit — AI Calling Agents</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Poppins:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600&family=Noto+Sans+Telugu:wght@400;500;600&display=swap" rel="stylesheet">
@@ -160,31 +160,25 @@
       <circle cx="29" cy="29" r="27" fill="none" stroke="#5A5FE0" stroke-width="2"/>
       <text x="29" y="38" text-anchor="middle" font-family="Fraunces,serif" font-weight="700" font-size="26" fill="#E8B44C">V</text>
     </svg>
-    <div class="tag">Verba · AI Voice &amp; Chat Agents</div>
-    <h2>Three agents, three languages</h2>
-    <p>Pick one — every outcome lands in the CRM, live.</p>
+    <div class="tag">Verba × TradeCredit</div>
+    <h2>Your retailer calls, on autopilot</h2>
+    <p>Pick a call — every outcome lands in the CRM, live.</p>
     <div class="scns">
-      <button class="scn" data-scene="lead" data-default="english">
-        <span class="ic">📞</span>
-        <span class="tx"><b>Outbound lead call</b><small>Riya qualifies an apartment enquiry — interested or not.</small>
-          <span class="chips"><span class="chip on" data-lang="english">English</span><span class="chip" data-lang="hindi">हिंदी</span><span class="chip" data-lang="telugu">తెలుగు</span></span>
-        </span>
-      </button>
       <button class="scn" data-scene="collections" data-default="hindi">
         <span class="ic">💳</span>
-        <span class="tx"><b>Payment reminder</b><small>Suvidha Finserv — polite EMI reminder, outcome logged.</small>
+        <span class="tx"><b>Payment reminder</b><small>Priya reminds a retailer of this week's instalment — promise-to-pay captured.</small>
           <span class="chips"><span class="chip" data-lang="english">English</span><span class="chip on" data-lang="hindi">हिंदी</span><span class="chip" data-lang="telugu">తెలుగు</span></span>
         </span>
       </button>
-      <button class="scn" data-scene="clinic" data-default="telugu">
-        <span class="ic">🦷</span>
-        <span class="tx"><b>Clinic booking call</b><small>Call Ananya — prices, bookings, every call recorded.</small>
-          <span class="chips"><span class="chip" data-lang="english">English</span><span class="chip" data-lang="hindi">हिंदी</span><span class="chip on" data-lang="telugu">తెలుగు</span></span>
+      <button class="scn" data-scene="lead" data-default="english">
+        <span class="ic">📞</span>
+        <span class="tx"><b>Retailer onboarding call</b><small>Riya qualifies a shop owner for stock credit — shop, market, weekly need.</small>
+          <span class="chips"><span class="chip on" data-lang="english">English</span><span class="chip" data-lang="hindi">हिंदी</span><span class="chip" data-lang="telugu">తెలుగు</span></span>
         </span>
       </button>
     </div>
-    <p style="margin:12px 0 0;font-size:11px">Every agent speaks all three — tap a language chip, or the card for its usual one.</p>
-    <div class="scnlinks"><a href="/crm" target="_blank">Open Verba CRM ↗</a></div>
+    <p style="margin:12px 0 0;font-size:11px">Every agent speaks all three languages — tap a chip, or the card for its usual one.</p>
+    <div class="scnlinks"><a href="/crm" target="_blank">Open TradeCredit CRM ↗</a></div>
   </div>
 </div>
 <div class="wrap">
@@ -198,9 +192,9 @@
       </svg>
     </div>
     <div class="brand">
-      <h1 id="brandH1">Verba</h1>
-      <div class="sub" id="brandSub">AI Voice &amp; Chat Agents · English · हिंदी · తెలుగు</div>
-      <div class="by">A Sahayak AI product · Hyderabad</div>
+      <h1 id="brandH1">TradeCredit</h1>
+      <div class="sub" id="brandSub">AI calling agents for TradeCredit · English · हिंदी · తెలుగు</div>
+      <div class="by">Verba · A Sahayak AI product</div>
     </div>
     <button id="btnScenes" class="ghost">⇄ Scenarios</button>
     <div class="pill"><span class="dot" id="livedot"></span><span id="pilltext">Idle</span></div>
@@ -277,28 +271,28 @@ const LANGS = {
 const SCENARIO_PACK = {
   lead: {
     default:'english', chat:false, outbound:true,
-    who:'Riya · Verba',
-    h1:'Verba', sub:'Outbound lead call · outcome recorded',
+    who:'Riya · TradeCredit',
+    h1:'TradeCredit', sub:'Retailer onboarding call · outcome recorded',
     convoTitle:'Live call',
     big:'Incoming call ☎️',
     startLabel:'📞 Answer call',
     hints:{
-      english:'Tap <b>📞 Answer call</b> and say <i>"Hello?"</i> — Riya takes it from there. Try <i>"not interested"</i> too.',
-      hindi:'Tap <b>📞 Answer call</b>, कहिए <i>"हैलो?"</i> — बाकी रिया संभालेगी।',
-      telugu:'Tap <b>📞 Answer call</b>, చెప్పండి <i>"హలో?"</i> — మిగతాది రియా చూసుకుంటుంది.',
+      english:'Tap <b>📞 Answer call</b> and say <i>"Hello?"</i> — you are the shop owner. Try <i>"not interested"</i> too.',
+      hindi:'Tap <b>📞 Answer call</b>, कहिए <i>"हैलो?"</i> — आप दुकानदार हैं, रिया बाकी संभालेगी।',
+      telugu:'Tap <b>📞 Answer call</b>, చెప్పండి <i>"హలో?"</i> — మీరే షాప్ ఓనర్, మిగతాది రియా చూసుకుంటుంది.',
     },
   },
   collections: {
     default:'hindi', chat:false, outbound:true,
-    who:'Priya · Suvidha Finserv',
-    h1:'Suvidha Finserv', sub:'Payment reminder call · outcome recorded',
+    who:'Priya · TradeCredit',
+    h1:'TradeCredit', sub:'Payment reminder call · outcome recorded',
     convoTitle:'Live call',
     big:'Incoming call 💳',
     startLabel:'📞 Answer call',
     hints:{
-      english:'Tap <b>📞 Answer call</b>, say <i>"Hello?"</i> — reply like the customer.',
-      hindi:'Tap <b>📞 Answer call</b>, कहिए <i>"हैलो?"</i> — ग्राहक की तरह जवाब दीजिए।',
-      telugu:'Tap <b>📞 Answer call</b>, చెప్పండి <i>"హలో?"</i> — కస్టమర్ లా జవాబివ్వండి.',
+      english:'Tap <b>📞 Answer call</b>, say <i>"Hello?"</i> — you are Manjunath, the retailer.',
+      hindi:'Tap <b>📞 Answer call</b>, कहिए <i>"हैलो?"</i> — आप मंजुनाथ हैं, दुकानदार की तरह जवाब दीजिए।',
+      telugu:'Tap <b>📞 Answer call</b>, చెప్పండి <i>"హలో?"</i> — మీరే మంజునాథ్, రిటైలర్ లా జవాబివ్వండి.',
     },
   },
   clinic: {
@@ -418,8 +412,8 @@ function renderCfg(){
 
 // ── CRM feed (right panel) — each business has its OWN CRM ───────────────────
 const CRM_NAME = {
-  lead:'Verba Realty CRM',
-  collections:'Suvidha Finserv CRM',
+  lead:'TradeCredit · Retailer Leads',
+  collections:'TradeCredit · Collections',
   clinic:'Ananya Clinic CRM',
 };
 const KIND_META = {
