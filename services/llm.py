@@ -197,6 +197,8 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
     if tool == "log_payment_outcome":
         outcome = str(a.get("outcome") or "").strip().lower()
         ptp = str(a.get("ptp_date") or "").strip()
+        # Speak "24 जुलाई", never the raw ISO "2026-07-24" (the voice would read the dashes).
+        ptp = _humanize_when(ptp, "", lang) or ptp
         if lang == "hindi":
             if outcome == "promise_to_pay":
                 dt = f" {ptp} को" if ptp else ""
@@ -439,13 +441,15 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict, scenario: 
                                  "parts": [{"functionResponse": {"name": name, "response": response}}]})
                 continue  # let the model explain / recover
 
-            # SUCCESS — speak a tailored confirmation built locally and SKIP the second Gemini
-            # call (flash-lite usually returns empty text here anyway). Halves the LLM latency
-            # and quota on every tool turn.
+            # SUCCESS — speak and SKIP the second Gemini call (halves tool-turn latency).
+            # Prefer the model's OWN text from this same turn when it wrote one (it answers
+            # whatever the customer just asked — e.g. "how much?" — far smarter than a canned
+            # line); the local confirmation is the fallback when the turn was tool-only.
             last_tool, last_args = name, args
             contents.append({"role": "user", "parts": [{"functionResponse": {
                 "name": name, "response": {"status": "success", "id": row.get("id")}}}]})
-            spoken = _fallback_for(name, args, lang)
+            own = re.sub(r"\(System[^)]*\)", "", "".join(text_chunks)).strip()
+            spoken = own if len(own) >= 8 else _fallback_for(name, args, lang)
             contents.append({"role": "model", "parts": [{"text": spoken}]})
             return spoken
 

@@ -371,6 +371,7 @@ function chooseScenario(s, l){
   $('crmTitle').textContent = CRM_NAME[sessionScenario] || 'CRM';
   $('crmOpen').href = '/crm?s=' + sessionScenario;
   if(recog){ try{ recog.lang = langCode(); }catch(e){} }
+  getOpening();   // prefetch the opener audio NOW — the call picks up instantly on Start
   init();
   if(p.chat){
     // WhatsApp: the assistant greets instantly, then the customer types (or the ladder nudges)
