@@ -383,9 +383,15 @@ function chooseScenario(s, l){
 }
 
 async function init(){
-  try{
-    CONFIG = await (await fetch('/config')).json();
-  }catch(e){ CONFIG = {stt:'webspeech',tts:'none',llm_ok:false}; }
+  // Retry /config a few times — one flaky mobile request must NOT downgrade the whole call
+  // to browser STT (which silently hears nothing on many phones).
+  for(let i=0;i<3 && !CONFIG;i++){
+    try{ CONFIG = await (await fetch('/config')).json(); }
+    catch(e){ await new Promise(r=>setTimeout(r, 400*(i+1))); }
+  }
+  // Still unreachable? Assume the normal stack: the mic→server upload path does STT
+  // server-side and works without /config. Browser STT only when the server SAYS so.
+  if(!CONFIG) CONFIG = {stt:'sarvam', tts:'elevenlabs', llm_ok:true};
   renderCfg();
   await loadCrm();
 }
