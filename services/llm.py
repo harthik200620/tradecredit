@@ -162,6 +162,16 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
     if tool == "qualify_lead":
         status = str(a.get("status") or "").strip().lower()
         area = str(a.get("area") or "").strip()
+        # Fully-silent call → a proper "couldn't hear you" sign-off, not a generic goodbye.
+        if "no response" in str(a.get("notes") or "").lower():
+            if lang == "hindi":
+                return ("लगता है आवाज़ नहीं आ रही जी — मैं रिया, ट्रेडक्रेडिट से। आपकी स्टॉक "
+                        "क्रेडिट एंक्वायरी पर फिर कॉल करूँगी। धन्यवाद!")
+            if lang == "telugu":
+                return ("మీ మాట వినపడటం లేదు అండి — నేను రియా, ట్రేడ్‌క్రెడిట్ నుండి. మీ స్టాక్ "
+                        "క్రెడిట్ ఎంక్వైరీ గురించి మళ్ళీ కాల్ చేస్తాను. ధన్యవాదాలు!")
+            return ("Seems I can't hear you — this is Riya from TradeCredit; "
+                    "I'll call again about your stock credit enquiry. Thank you!")
         if status == "not_interested":
             if lang == "hindi":
                 return "कोई बात नहीं जी, आपके समय के लिए धन्यवाद — मन बदले तो हम एक कॉल दूर हैं।"
@@ -194,6 +204,21 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
         # Speak "24 जुलाई", never the raw ISO "2026-07-24" (the voice would read the dashes).
         ptp = _humanize_when(ptp, "", lang) or ptp
         due_hi = COLLECTION_CASE["due_date_hi"]
+        # Fully-silent call → leave a complete voicemail-style message: who called, the
+        # instalment, the due date, the link. The whole value of the call in one go.
+        if "no response" in str(a.get("notes") or "").lower():
+            cc = COLLECTION_CASE
+            if lang == "hindi":
+                return (f"{cc['customer_hi']} जी, शायद आवाज़ नहीं आ रही — मैं प्रिया, ट्रेडक्रेडिट से। "
+                        f"इस हफ़्ते की किश्त {cc['amount_hi']}, {cc['due_date_hi']} तक है — लिंक "
+                        "व्हाट्सऐप पर भेज दिया है, समय पर पेमेंट कर दीजिएगा। धन्यवाद!")
+            if lang == "telugu":
+                return (f"{cc['customer']} గారు, మీ మాట వినపడటం లేదు — నేను ప్రియ, ట్రేడ్‌క్రెడిట్ "
+                        f"నుండి. ఈ వారం కిస్తీ {cc['due_date']} లోపు కట్టాలి — లింక్ వాట్సాప్ లో "
+                        "పంపించాను. ధన్యవాదాలు!")
+            return (f"Mr. {cc['customer']}, I couldn't hear you — this is Priya from TradeCredit. "
+                    f"This week's instalment is due {cc['due_date']}; the payment link is on "
+                    "WhatsApp, do pay on time. Thank you!")
         if lang == "hindi":
             if outcome == "promise_to_pay":
                 dt = f" {ptp} को" if ptp else ""

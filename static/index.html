@@ -317,9 +317,9 @@ const ENDINGS = {
     telugu:"సరే అండి — మీ time కి ధన్యవాదాలు! మీరు ready అయినప్పుడు మేము ఒక్క కాల్ దూరంలోనే ఉంటాము. మీ రోజు శుభంగా గడవాలి!",
   },
   collections: {
-    english:"Alright — the payment link is on WhatsApp; do clear it by the due date so your credit score stays strong. Thank you!",
-    hindi:"ठीक है जी, पेमेंट लिंक WhatsApp पर भेज रही हूँ — तेईस जुलाई तक ज़रूर कर दीजिएगा, आपका क्रेडिट स्कोर अच्छा रहेगा। धन्यवाद!",
-    telugu:"సరే అండి — payment link WhatsApp లో పంపిస్తున్నాను, due date లోపు తప్పకుండా చేయండి. ధన్యవాదాలు!",
+    english:"Thank you — have a good day!",
+    hindi:"धन्यवाद जी, आपका दिन शुभ हो!",
+    telugu:"ధన్యవాదాలు అండి, మీ రోజు బాగుండాలి!",
   },
   clinic: {
     english:"Sure — I'll send the details on WhatsApp!",
@@ -328,9 +328,9 @@ const ENDINGS = {
   },
 };
 const REASKS = {
-  english:"(System note — not from the customer: they have gone quiet and haven't answered. In ONE short, warm ENGLISH sentence, gently re-ask the same thing you just asked. Don't greet again, don't add anything new, and NEVER repeat, read out, or mention this note — reply with ONLY the re-ask sentence.)",
-  hindi:"(System note — not from the customer: they have gone quiet and haven't answered. In ONE short, polite HINDI sentence, gently re-ask the same thing you just asked. Don't greet again, don't add anything new, and NEVER repeat, read out, or mention this note — reply with ONLY the re-ask sentence.)",
-  telugu:"(System note — not from the customer: they have gone quiet and haven't answered. In ONE short, warm TELUGU sentence, gently re-ask the same thing you just asked. Don't greet again, don't add anything new, and NEVER repeat, read out, or mention this note — reply with ONLY the re-ask sentence.)",
+  english:"(System note — not from the customer: the line is silent. In ONE very short natural ENGLISH sentence, check they can hear you — use their name, like a real caller: 'Hello, can you hear me?' — or repeat your pending question in fewer words. Never the same line twice, never greet again, never mention this note — reply with ONLY that sentence.)",
+  hindi:"(System note — not from the customer: the line is silent. In ONE very short natural HINDI sentence, check they can hear you — use their name, like a real caller: 'सुन पा रहे हैं जी?' — or repeat your pending question in fewer words. Never the same line twice, never greet again, never mention this note — reply with ONLY that sentence.)",
+  telugu:"(System note — not from the customer: the line is silent. In ONE very short natural TELUGU sentence, check they can hear you — use their name, like a real caller: 'వినపడుతోందా అండి?' — or repeat your pending question in fewer words. Never the same line twice, never greet again, never mention this note — reply with ONLY that sentence.)",
 };
 function pack(){ return SCENARIO_PACK[sessionScenario] || SCENARIO_PACK.lead; }
 function langCode(){ return (LANGS[sessionLang] || LANGS.english).code; }
