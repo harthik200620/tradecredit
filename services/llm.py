@@ -199,22 +199,23 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
         ptp = str(a.get("ptp_date") or "").strip()
         # Speak "24 जुलाई", never the raw ISO "2026-07-24" (the voice would read the dashes).
         ptp = _humanize_when(ptp, "", lang) or ptp
+        due_hi = COLLECTION_CASE["due_date_hi"]
         if lang == "hindi":
             if outcome == "promise_to_pay":
                 dt = f" {ptp} को" if ptp else ""
-                return f"बहुत बढ़िया जी —{dt} पेमेंट नोट कर लिया, लिंक व्हाट्सऐप पर भेज रही हूँ। और कुछ मदद करूँ जी?"
+                return f"बहुत बढ़िया जी —{dt} पेमेंट नोट कर लिया, लिंक व्हाट्सऐप पर भेज रही हूँ। समय पर पेमेंट से आपका क्रेडिट स्कोर भी अच्छा रहेगा।"
             if outcome == "already_paid":
                 return "जी — नोट कर लिया, टीम पेमेंट वेरीफाई कर लेगी। और कुछ मदद करूँ जी?"
             if outcome == "needs_time":
-                dt = f"{ptp} तक कर दीजिएगा — " if ptp else ""
-                return f"कोई बात नहीं जी। {dt}लिंक व्हाट्सऐप पर रहेगा। और कुछ मदद करूँ जी?"
+                dt = f"{ptp} तक" if ptp else f"{due_hi} तक"
+                return f"ठीक है जी — {dt} ज़रूर कर दीजिएगा, समय पर पेमेंट से आपका क्रेडिट स्कोर अच्छा रहता है। लिंक व्हाट्सऐप पर भेज रही हूँ।"
             if outcome == "dispute":
                 return "खेद है जी — नोट कर लिया, हमारे अधिकारी जल्द संपर्क करेंगे। धन्यवाद।"
             if outcome == "callback_requested":
-                return "ज़रूर जी, हमारे अधिकारी आपको कॉल कर लेंगे। और कुछ मदद करूँ जी?"
+                return "ज़रूर जी, हमारे अधिकारी आपको कॉल कर लेंगे। धन्यवाद।"
             if outcome == "declined":
-                return "कोई बात नहीं जी, मैं समझती हूँ — बिलकुल कोई दबाव नहीं। आपका दिन शुभ हो, धन्यवाद जी।"
-            return "ठीक है जी, कोई दबाव नहीं — जब सुविधा हो तब लिंक व्हाट्सऐप पर मौजूद रहेगा। धन्यवाद जी!"
+                return "समझती हूँ जी — फिर भी जितनी जल्दी हो सके कर दीजिएगा, इससे आपका क्रेडिट स्कोर अच्छा रहेगा। लिंक व्हाट्सऐप पर है। धन्यवाद।"
+            return f"जी, लिंक व्हाट्सऐप पर भेज रही हूँ — {due_hi} तक ज़रूर कर दीजिएगा, आपका क्रेडिट स्कोर अच्छा बना रहेगा।"
         if lang == "telugu":
             if outcome == "promise_to_pay":
                 dt = f" {ptp} కి" if ptp else ""
@@ -231,21 +232,22 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
             if outcome == "declined":
                 return "పర్వాలేదు అండి, నేను అర్థం చేసుకుంటాను — ఎలాంటి ఒత్తిడి లేదు. మీ రోజు బాగుండాలి, ధన్యవాదాలు అండి."
             return "సరే అండి, ఎలాంటి ఒత్తిడి లేదు — వీలైనప్పుడు లింక్ వాట్సాప్ లో ఉంటుంది. ధన్యవాదాలు అండి!"
+        due_en = COLLECTION_CASE["due_date"]
         if outcome == "promise_to_pay":
             dt = f" for {ptp}" if ptp else ""
-            return f"Noted{dt} — the payment link is on its way on WhatsApp. Anything else I can help with?"
+            return f"Noted{dt} — the link is on its way on WhatsApp; paying on time keeps your credit score strong."
         if outcome == "already_paid":
             return "Noted — our team will verify the payment. Anything else I can help with?"
         if outcome == "needs_time":
-            dt = f"pay by {ptp} if you can — " if ptp else ""
-            return f"No problem at all — {dt}the link will stay on WhatsApp. Anything else I can help with?"
+            dt = f"by {ptp}" if ptp else f"by {due_en}"
+            return f"Alright — do clear it {dt}; paying on time keeps your credit score strong. The link is on WhatsApp."
         if outcome == "dispute":
             return "I'm sorry for the trouble — noted; an officer will call you shortly."
         if outcome == "callback_requested":
-            return "Of course — one of our officers will call you. Anything else I can help with?"
+            return "Of course — one of our officers will call you. Thank you."
         if outcome == "declined":
-            return "That's completely alright — I understand, and there's no pressure at all. Have a good day, thank you."
-        return "Alright, no pressure at all — whenever it's convenient, the link will be on WhatsApp. Thank you!"
+            return "I understand — still, do pay as soon as you can so your credit score stays good. The link is on WhatsApp. Thank you."
+        return f"The link is on WhatsApp — do clear it by {due_en} so your credit score stays strong. Thank you!"
 
     if tool == "book_appointment":
         service = str(a.get("service") or "appointment").strip()
