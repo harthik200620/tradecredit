@@ -26,14 +26,14 @@ def _clean(name: str, default: str = "") -> str:
 
 def _load_keys() -> list[str]:
     """Gather Gemini API keys for rotation: a comma-separated GEMINI_API_KEYS, plus the
-    numbered GEMINI_API_KEY / GEMINI_API_KEY_2 … GEMINI_API_KEY_30 vars (add more keys by
+    numbered GEMINI_API_KEY / GEMINI_API_KEY_2 … GEMINI_API_KEY_40 vars (add more keys by
     just adding env vars — no code change). Deduped, empties dropped."""
     raw = []
     combo = _clean("GEMINI_API_KEYS")
     if combo:
         raw += [p.strip() for p in combo.split(",")]
     raw.append(_clean("GEMINI_API_KEY"))
-    for n in range(2, 31):
+    for n in range(2, 41):
         raw.append(_clean(f"GEMINI_API_KEY_{n}"))
     out, seen = [], set()
     for k in raw:
@@ -62,9 +62,7 @@ else:
     GEMINI_MODEL = _BEST_MODEL
 _URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
-# Let the model THINK briefly before it answers — this is what turns a reflexive, bot-like
-# reply into a considered, wise one (understand the intent, then respond). Costs a little
-# latency. Tune with GEMINI_THINKING_BUDGET (0 = off, back to instant snap replies).
+
 def _int_env(name: str, default: int) -> int:
     try:
         return int(_clean(name, str(default)) or default)
@@ -72,15 +70,54 @@ def _int_env(name: str, default: int) -> int:
         return default
 
 
+# HYBRID MODEL POOL: some keys (typically newer-account keys) 404 on GEMINI_MODEL ("no longer
+# available to new users") while older-account keys serve it fine. Rather than wasting a
+# request on every 404 before rotating past them, each key gets its OWN model up front: the
+# first GEMINI_PRIMARY_KEY_COUNT keys (.env order) use GEMINI_MODEL; every key after that uses
+# GEMINI_MODEL_FALLBACK. Unset -> every key uses GEMINI_MODEL (today's single-model behavior —
+# all 27 TradeCredit keys currently serve GEMINI_MODEL fine, so this is dormant infrastructure
+# until/unless a future key batch needs the split, same as the sibling PetSecure build).
+_raw_fallback = _clean("GEMINI_MODEL_FALLBACK")
+GEMINI_MODEL_FALLBACK = (
+    _raw_fallback if re.fullmatch(r"gemini-[A-Za-z0-9.\-]+", _raw_fallback) else GEMINI_MODEL
+)
+_PRIMARY_KEY_COUNT = _int_env("GEMINI_PRIMARY_KEY_COUNT", 10**9)
+
+
+def _model_for_key_idx(idx: int) -> str:
+    return GEMINI_MODEL if idx < _PRIMARY_KEY_COUNT else GEMINI_MODEL_FALLBACK
+
+
+# Let the model THINK briefly before it answers — this is what turns a reflexive, bot-like
+# reply into a considered, wise one (understand the intent, then respond). Costs a little
+# latency. Tune with GEMINI_THINKING_BUDGET (0 = off, back to instant snap replies).
 _THINKING_BUDGET = max(0, _int_env("GEMINI_THINKING_BUDGET", 512))
-# Thinking pays off on a CAPABLE model; on a -lite model it mostly just adds latency for little
-# gain. So thinking is OFF whenever the (possibly env-pinned) model is a -lite id — that keeps
-# the current deploy snappy — and ON once you move to gemini-flash-latest. This is why Telugu
-# felt slow: thinking was running on flash-lite.
-_EFFECTIVE_THINKING = 0 if "lite" in GEMINI_MODEL.lower() else _THINKING_BUDGET
-# When thinking is on, the visible answer shares the token pool with the thinking, so give it
-# generous headroom (the prompt still keeps the spoken reply to one short sentence).
-_MAX_OUTPUT_TOKENS = max(1024, _EFFECTIVE_THINKING + 512) if _EFFECTIVE_THINKING > 0 else 220
+
+
+def _is_gemini3(model: str) -> bool:
+    return model.startswith("gemini-3")
+
+
+def _thinking_config_for(model: str) -> dict | None:
+    """Gemini 3 models think BY DEFAULT and their thoughts share the output-token pool: with a
+    small cap the thoughts (~200 tokens) ate the whole budget and replies came out TRUNCATED.
+    So 3-series gets thinkingLevel "minimal" (fastest valid level — budget knobs are 2.5-era
+    API); 2.5-series keeps the tunable budget; -lite gets no thinking (latency)."""
+    if _is_gemini3(model):
+        return {"thinkingLevel": "minimal"}
+    if "2.5" in model or model.endswith("-latest"):
+        eff = 0 if "lite" in model.lower() else _THINKING_BUDGET
+        return {"thinkingBudget": eff}
+    return None
+
+
+def _max_tokens_for(model: str) -> int:
+    """When thinking is on, the visible answer shares the token pool with the thinking, so give
+    it generous headroom (the prompt still keeps the spoken reply to one short sentence)."""
+    if _is_gemini3(model):
+        return 1024
+    eff = 0 if "lite" in model.lower() else _THINKING_BUDGET
+    return max(1024, eff + 512) if eff > 0 else 220
 
 # Fields each tool needs before it may fire; the server enforces this even if the model rushes.
 _REQUIRED_BY_TOOL = {
@@ -224,7 +261,7 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
                 dt = f" {ptp} को" if ptp else ""
                 return f"बहुत बढ़िया जी —{dt} नोट कर लिया, लिंक व्हाट्सऐप पर आ रहा है।"
             if outcome == "already_paid":
-                return "जी, नोट कर लिया — टीम वेरीफाई कर लेगी। धन्यवाद।"
+                return "जी, नोट कर लिया — टीम जाँच कर लेगी। धन्यवाद।"
             if outcome == "needs_time":
                 dt = f"{ptp} तक" if ptp else f"{due_hi} तक"
                 return f"ठीक है जी — {dt} ज़रूर कीजिएगा, क्रेडिट स्कोर अच्छा रहेगा। लिंक भेज रही हूँ।"
@@ -272,14 +309,13 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
         service = str(a.get("service") or "appointment").strip()
         d, t = str(a.get("date") or "").strip(), str(a.get("time") or "").strip()
         when = _humanize_when(d, t, lang)   # natural spoken date/time, never raw ISO/24h
+        # Hindi/Telugu: never echo the (Latin-spelled) name — the voice would spell it out.
         if lang == "hindi":
-            who = f"{name} जी, " if name else ""
-            dt = f" {when}" if when else ""
-            return f"{who}आपकी {service} अपॉइंटमेंट{dt} कन्फर्म हो गई — जानकारी व्हाट्सऐप पर आएगी। और कुछ मदद करूँ जी?"
+            dt = f"{when} की " if when else ""
+            return f"{dt}अपॉइंटमेंट कन्फर्म हो गई जी — जानकारी व्हाट्सऐप पर आएगी। और कुछ मदद करूँ जी?"
         if lang == "telugu":
-            who = f"{name} గారు, " if name else ""
-            dt = f" {when}" if when else ""
-            return f"{who}మీ {service} అపాయింట్‌మెంట్{dt} కన్ఫర్మ్ అయ్యింది — వివరాలు వాట్సాప్ లో వస్తాయి. ఇంకేమైనా సహాయం కావాలా అండి?"
+            dt = f"{when} " if when else ""
+            return f"{dt}అపాయింట్‌మెంట్ కన్ఫర్మ్ అయ్యింది అండి — వివరాలు వాట్సాప్ లో వస్తాయి. ఇంకేమైనా సహాయం కావాలా అండి?"
         who = f"{name}, " if name else ""
         dt = f" for {when}" if when else ""
         return f"{who}your {service} appointment is confirmed{dt} — details on WhatsApp. Anything else I can help with?"
@@ -354,21 +390,11 @@ async def _generate(contents: list, scenario: str = "lead", lang: str = "",
     global _key_idx
     if not _KEYS:
         raise RuntimeError("No Gemini API key set")
-    body = {
-        "systemInstruction": {"parts": [{"text": build_system_prompt(_today(), scenario, lang)}]},
-        "contents": contents,
-        "tools": [{"functionDeclarations": tools_for(scenario)}],
-        # "ANY" FORCES a function call — used for must-record turns (the client's close note),
-        # where AUTO mode too often speaks the goodbye and skips the tool.
-        "toolConfig": {"functionCallingConfig": {"mode": "ANY" if force_tool else "AUTO"}},
-        # The spoken reply stays ONE short sentence (enforced by the prompt); the token cap is
-        # generous only so the model's brief THINKING isn't truncated.
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": _MAX_OUTPUT_TOKENS},
-    }
-    if "2.5" in GEMINI_MODEL or GEMINI_MODEL.endswith("-latest"):
-        # Think before answering ONLY on capable models (off on -lite to stay fast).
-        body["generationConfig"]["thinkingConfig"] = {"thinkingBudget": _EFFECTIVE_THINKING}
-    url = _URL.format(model=GEMINI_MODEL)
+    system_text = build_system_prompt(_today(), scenario, lang)
+    tools = [{"functionDeclarations": tools_for(scenario)}]
+    # "ANY" FORCES a function call — used for must-record turns (the client's close note),
+    # where AUTO mode too often speaks the goodbye and skips the tool.
+    tool_config = {"functionCallingConfig": {"mode": "ANY" if force_tool else "AUTO"}}
     last_err = None
     client = _http.client()  # shared keep-alive client (no per-call TLS handshake)
     # Round-robin: each new request starts on the NEXT key, so the per-key free-tier rate
@@ -376,12 +402,27 @@ async def _generate(contents: list, scenario: str = "lead", lang: str = "",
     # effective throughput ≈ single-key limit × number of keys.
     if len(_KEYS) > 1:
         _key_idx = (_key_idx + 1) % len(_KEYS)
-    # Then try keys starting there; rotate past any that are quota'd/invalid this turn.
+    # Then try keys starting there; rotate past any that are quota'd/invalid this turn. Each
+    # key uses ITS OWN model (see _model_for_key_idx) — a mixed pool serves every key's real
+    # capacity instead of wasting a call on every 404 before finding one that works.
     for _ in range(len(_KEYS)):
+        model = _model_for_key_idx(_key_idx)
+        gen_config = {"temperature": 0.7, "maxOutputTokens": _max_tokens_for(model)}
+        thinking = _thinking_config_for(model)
+        if thinking:
+            gen_config["thinkingConfig"] = thinking
+        body = {
+            "systemInstruction": {"parts": [{"text": system_text}]},
+            "contents": contents,
+            "tools": tools,
+            "toolConfig": tool_config,
+            "generationConfig": gen_config,
+        }
+        url = _URL.format(model=model)
         resp = await client.post(url, params={"key": _KEYS[_key_idx]}, json=body)
         if resp.status_code < 400:
             return resp.json()
-        last_err = f"Gemini {resp.status_code} (key {_key_idx + 1}/{len(_KEYS)}): {resp.text[:160]}"
+        last_err = f"Gemini {resp.status_code} (key {_key_idx + 1}/{len(_KEYS)}, {model}): {resp.text[:160]}"
         if _should_rotate(resp.status_code, resp.text):
             _key_idx = (_key_idx + 1) % len(_KEYS)
             continue

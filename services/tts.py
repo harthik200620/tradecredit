@@ -125,14 +125,13 @@ def _strip_audio_tags(text: str) -> str:
     return _AUDIO_TAG.sub("", text).strip()
 
 
-# The English voice mis-reads some names (e.g. "Riya" as "Rye-ya"). Respell them phonetically
-# for the SPOKEN audio ONLY — the on-screen transcript keeps the real spelling. Word-boundary
-# and case-insensitive; native-script replies are untouched (there the names are रिया / రియా).
-# Add more pairs here whenever a word is mispronounced.
-_PRONOUNCE = {
-    "Riya": "Reeya",
-    "Priya": "Preeya",
-}
+# Respell names ONLY for the SPOKEN audio (the transcript keeps the real spelling). The EN
+# voice (U9JK "keerthi hindi english perfect") is a Voice-Design voice built for Indian names,
+# so we respell as little as possible — on the sibling PetSecure build, the same kind of forced
+# respelling made "Priya" come out as "Praya" (over-correction, not under). Hindi/Telugu replies
+# are in native script (रिया / రియా) and never touched. Add a pair ONLY if a name is genuinely
+# mis-said by ear on THIS voice.
+_PRONOUNCE = {}
 _PRONOUNCE_RE = [(re.compile(r"\b" + re.escape(k) + r"\b", re.I), v) for k, v in _PRONOUNCE.items()]
 
 

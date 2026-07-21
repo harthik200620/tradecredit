@@ -97,6 +97,13 @@ async def api_crm(password: str = Form(default="")):
 # Chosen language → Sarvam STT language_code.
 _LANG_CODE = {"english": "en-IN", "hindi": "hi-IN", "telugu": "te-IN"}
 
+# Spoken when the LLM fails mid-call — a graceful "say that again?" instead of a raw error.
+_RETRY_LINE = {
+    "english": "Sorry, the line broke for a second — could you say that again?",
+    "hindi": "माफ़ कीजिए जी, आवाज़ कट गई थी — एक बार फिर बता दीजिए?",
+    "telugu": "క్షమించండి అండి, లైన్ కట్ అయ్యింది — మరోసారి చెప్పండి?",
+}
+
 
 @app.post("/api/fillers")
 async def api_fillers(password: str = Form(default=""), scenario: str = Form(default=""),
@@ -280,7 +287,12 @@ async def api_turn(
                                       _handlers_for(scenario, captured),
                                       scenario=scenario, lang=lng)
     except Exception as e:
-        return {"error": f"llm: {e}", "transcript": transcript, "history": contents}
+        # NEVER surface a raw error to the caller — log it server-side and speak a graceful
+        # "say that again?" line instead; the conversation continues on the next turn.
+        print(f"[llm-fail] {type(e).__name__}: {e}")
+        reply = _RETRY_LINE.get(lng, _RETRY_LINE["english"])
+        # gemini_turn already appended the user's turn; add only the graceful model line.
+        contents.append({"role": "model", "parts": [{"text": reply}]})
 
     # Chat scenario: text is the product — instant replies, no TTS spend.
     if sc["chat"]:
@@ -379,9 +391,10 @@ async def _process_text(ws: WebSocket, state: dict, text: str, silent: bool = Fa
             _handlers_for(scenario, captured, on_row), scenario=scenario, lang=lng,
         )
     except Exception as e:
-        await _send(ws, {"type": "error", "where": "llm", "message": str(e), "recoverable": True})
-        await _send(ws, {"type": "status", "state": "idle"})
-        return
+        # Graceful recovery — log the real error, speak a "say that again?" line.
+        print(f"[llm-fail] {type(e).__name__}: {e}")
+        assistant_text = _RETRY_LINE.get(lng, _RETRY_LINE["english"])
+        state["contents"].append({"role": "model", "parts": [{"text": assistant_text}]})
 
     await _send(ws, {"type": "assistant_text", "role": "assistant", "text": assistant_text})
     db.log_turn(sid, "assistant", assistant_text)
