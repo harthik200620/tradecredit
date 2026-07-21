@@ -176,16 +176,10 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
             return "Of course — we'll call you back later. Thank you!"
         # interested
         if lang == "hindi":
-            ar = f"{area} की " if area else ""
-            return (f"बहुत बढ़िया जी — {ar}आपकी स्टॉक खरीदारी ट्रेडक्रेडिट पर हो सकती है, हमारे "
-                    "ऑनबोर्डिंग एग्ज़िक्यूटिव जल्द आपकी दुकान पर आएँगे। और कुछ जानना चाहेंगे जी?")
+            return "बहुत बढ़िया जी — हमारे एग्ज़िक्यूटिव जल्द आपकी दुकान पर आएँगे।"
         if lang == "telugu":
-            ar = f"{area} లో " if area else ""
-            return (f"చాలా మంచిది అండి — {ar}మీ స్టాక్ కొనుగోళ్లు ట్రేడ్‌క్రెడిట్ మీద చేయవచ్చు, మా "
-                    "ఆన్‌బోర్డింగ్ ఎగ్జిక్యూటివ్ త్వరలో మీ షాప్ కి వస్తారు. ఇంకేమైనా తెలుసుకోవాలా అండి?")
-        ar = f" at {area}" if area else ""
-        return (f"Perfect — TradeCredit can cover your weekly stock purchases{ar}; our "
-                "onboarding executive will visit your shop shortly. Anything else you'd like to know?")
+            return "చాలా మంచిది అండి — మా ఎగ్జిక్యూటివ్ త్వరలో మీ షాప్ కి వస్తారు."
+        return "Perfect — our onboarding executive will visit your shop soon."
 
     if tool == "log_enquiry":
         if lang == "hindi":
@@ -203,19 +197,19 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
         if lang == "hindi":
             if outcome == "promise_to_pay":
                 dt = f" {ptp} को" if ptp else ""
-                return f"बहुत बढ़िया जी —{dt} पेमेंट नोट कर लिया, लिंक व्हाट्सऐप पर भेज रही हूँ। समय पर पेमेंट से आपका क्रेडिट स्कोर भी अच्छा रहेगा।"
+                return f"बहुत बढ़िया जी —{dt} नोट कर लिया, लिंक व्हाट्सऐप पर आ रहा है।"
             if outcome == "already_paid":
-                return "जी — नोट कर लिया, टीम पेमेंट वेरीफाई कर लेगी। और कुछ मदद करूँ जी?"
+                return "जी, नोट कर लिया — टीम वेरीफाई कर लेगी। धन्यवाद।"
             if outcome == "needs_time":
                 dt = f"{ptp} तक" if ptp else f"{due_hi} तक"
-                return f"ठीक है जी — {dt} ज़रूर कर दीजिएगा, समय पर पेमेंट से आपका क्रेडिट स्कोर अच्छा रहता है। लिंक व्हाट्सऐप पर भेज रही हूँ।"
+                return f"ठीक है जी — {dt} ज़रूर कीजिएगा, क्रेडिट स्कोर अच्छा रहेगा। लिंक भेज रही हूँ।"
             if outcome == "dispute":
-                return "खेद है जी — नोट कर लिया, हमारे अधिकारी जल्द संपर्क करेंगे। धन्यवाद।"
+                return "खेद है जी — नोट कर लिया, अधिकारी जल्द कॉल करेंगे।"
             if outcome == "callback_requested":
-                return "ज़रूर जी, हमारे अधिकारी आपको कॉल कर लेंगे। धन्यवाद।"
+                return "ज़रूर जी, हमारे अधिकारी आपको कॉल करेंगे। धन्यवाद।"
             if outcome == "declined":
-                return "समझती हूँ जी — फिर भी जितनी जल्दी हो सके कर दीजिएगा, इससे आपका क्रेडिट स्कोर अच्छा रहेगा। लिंक व्हाट्सऐप पर है। धन्यवाद।"
-            return f"जी, लिंक व्हाट्सऐप पर भेज रही हूँ — {due_hi} तक ज़रूर कर दीजिएगा, आपका क्रेडिट स्कोर अच्छा बना रहेगा।"
+                return "समझती हूँ जी — जितनी जल्दी हो सके कर दीजिएगा, क्रेडिट स्कोर अच्छा रहेगा।"
+            return f"लिंक व्हाट्सऐप पर है जी — {due_hi} तक ज़रूर कर दीजिएगा।"
         if lang == "telugu":
             if outcome == "promise_to_pay":
                 dt = f" {ptp} కి" if ptp else ""
@@ -235,19 +229,19 @@ def _fallback_for(tool: str | None, args: dict | None, lang: str = "english") ->
         due_en = COLLECTION_CASE["due_date"]
         if outcome == "promise_to_pay":
             dt = f" for {ptp}" if ptp else ""
-            return f"Noted{dt} — the link is on its way on WhatsApp; paying on time keeps your credit score strong."
+            return f"Noted{dt} — the link is on its way on WhatsApp."
         if outcome == "already_paid":
-            return "Noted — our team will verify the payment. Anything else I can help with?"
+            return "Noted — our team will verify it. Thank you."
         if outcome == "needs_time":
             dt = f"by {ptp}" if ptp else f"by {due_en}"
-            return f"Alright — do clear it {dt}; paying on time keeps your credit score strong. The link is on WhatsApp."
+            return f"Alright — clear it {dt} and your credit score stays strong."
         if outcome == "dispute":
-            return "I'm sorry for the trouble — noted; an officer will call you shortly."
+            return "Sorry for the trouble — noted; an officer will call you."
         if outcome == "callback_requested":
-            return "Of course — one of our officers will call you. Thank you."
+            return "Of course — our officer will call you. Thank you."
         if outcome == "declined":
-            return "I understand — still, do pay as soon as you can so your credit score stays good. The link is on WhatsApp. Thank you."
-        return f"The link is on WhatsApp — do clear it by {due_en} so your credit score stays strong. Thank you!"
+            return "I understand — do pay soon though, it keeps your credit score good."
+        return f"The link is on WhatsApp — do clear it by {due_en}."
 
     if tool == "book_appointment":
         service = str(a.get("service") or "appointment").strip()
@@ -330,7 +324,8 @@ def _should_rotate(status: int, text: str) -> bool:
     return False
 
 
-async def _generate(contents: list, scenario: str = "lead", lang: str = "") -> dict:
+async def _generate(contents: list, scenario: str = "lead", lang: str = "",
+                    force_tool: bool = False) -> dict:
     global _key_idx
     if not _KEYS:
         raise RuntimeError("No Gemini API key set")
@@ -338,7 +333,9 @@ async def _generate(contents: list, scenario: str = "lead", lang: str = "") -> d
         "systemInstruction": {"parts": [{"text": build_system_prompt(_today(), scenario, lang)}]},
         "contents": contents,
         "tools": [{"functionDeclarations": tools_for(scenario)}],
-        "toolConfig": {"functionCallingConfig": {"mode": "AUTO"}},
+        # "ANY" FORCES a function call — used for must-record turns (the client's close note),
+        # where AUTO mode too often speaks the goodbye and skips the tool.
+        "toolConfig": {"functionCallingConfig": {"mode": "ANY" if force_tool else "AUTO"}},
         # The spoken reply stays ONE short sentence (enforced by the prompt); the token cap is
         # generous only so the model's brief THINKING isn't truncated.
         "generationConfig": {"temperature": 0.7, "maxOutputTokens": _MAX_OUTPUT_TOKENS},
@@ -379,10 +376,14 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict, scenario: 
     lang = norm_lang(lang, scenario)
     contents.append({"role": "user", "parts": [{"text": user_text}]})
     last_tool, last_args = None, None
+    # The client's close note names the tool it needs ("… CALL log_payment_outcome …") —
+    # force function-calling on those turns so the outcome is ALWAYS recorded.
+    force_tool = "(System note" in (user_text or "") and "CALL " in (user_text or "")
 
     for _ in range(5):  # allow a couple of tool round-trips
         try:
-            data = await _generate(contents, scenario, lang)
+            data = await _generate(contents, scenario, lang,
+                                   force_tool=force_tool and last_tool is None)
         except Exception:
             # If a tool already saved this turn, give a graceful spoken confirmation instead
             # of surfacing a raw error (e.g. when the follow-up call hits a Gemini 429).
