@@ -517,7 +517,8 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict, scenario: 
             last_tool, last_args = name, args
             contents.append({"role": "user", "parts": [{"functionResponse": {
                 "name": name, "response": {"status": "success", "id": row.get("id")}}}]})
-            own = re.sub(r"\(System[^)]*\)", "", "".join(text_chunks)).strip()
+            own = re.sub(r"\(System[^)]*\)", "", "".join(text_chunks))
+            own = re.sub(r"\s*\n+\s*", " ", own).strip()  # one spoken line, never split
             spoken = own if len(own) >= 8 else _fallback_for(name, args, lang)
             contents.append({"role": "model", "parts": [{"text": spoken}]})
             return spoken
@@ -525,7 +526,8 @@ async def gemini_turn(contents: list, user_text: str, handlers: dict, scenario: 
         final = "".join(text_chunks).strip()
         # flash-lite sometimes parrots internal "(System note …)" instructions into its reply —
         # strip them so they are never shown or spoken to the customer.
-        final = re.sub(r"\(System[^)]*\)", "", final).strip()
+        final = re.sub(r"\(System[^)]*\)", "", final)
+        final = re.sub(r"\s*\n+\s*", " ", final).strip()  # one spoken line, never split
         if not final:
             final = (
                 _fallback_for(last_tool, last_args, lang)
